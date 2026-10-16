@@ -266,11 +266,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
         return true;
     }
 
-    /**
-     * Keep the baseline anchored to the state captured before executing tests.
-     * A late source edit must remain pending, even if it occurs between the
-     * drift check and saving the graph.
-     */
+    // A late edit must remain pending even if it happens after the drift check.
     private function stampRunStart(Graph $graph): void
     {
         if ($this->startRunSnapshot === null) {
