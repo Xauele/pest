@@ -68,3 +68,9 @@ jobs:
 
     - name: Style
       run: composer test:lint
+
+    - name: Show Pint formatting diff (temporary)
+      if: failure()
+      run: |
+        vendor/bin/pint src/Plugins/Tia.php
+        git --no-pager diff -- src/Plugins/Tia.php
