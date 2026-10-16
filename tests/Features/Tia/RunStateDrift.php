@@ -12,7 +12,6 @@ test('a source edit during replay cannot be stamped as tested', function (array 
     $project = Project::make('master');
     $project->seed('master');
 
-    // Edit a test so that the first run executes it, while Greeter is replayable.
     $project->write('tests/Unit/CalculatorTest.php', <<<'PHP'
         <?php
 
@@ -58,7 +57,6 @@ test('a source edit during replay cannot be stamped as tested', function (array 
         ->and($first->output)->toContain('Project sources changed during the run')
         ->and($project->graph())->toEqual($previous);
 
-    // The edit remains pending, so the previously replayed Greeter tests must run.
     $second = $project->pest('--tia', ...$arguments);
 
     expect($second->exitCode)->toBe(0, $second->describe())
