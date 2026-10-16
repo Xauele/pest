@@ -178,6 +178,11 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
     /** @var array{structural: array<string, mixed>, environmental: array<string, mixed>}|null */
     private ?array $startFingerprint = null;
 
+    /** @var array{sha: ?string, tree: array<string, string>}|null */
+    private ?array $startRunSnapshot = null;
+
+    private bool $runTreeChanged = false;
+
     private bool $piggybackCoverage = false;
 
     private bool $recordingActive = false;
@@ -236,6 +241,29 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
         assert($this->startFingerprint !== null);
 
         return ! Fingerprint::structuralMatches($this->startFingerprint, $current);
+    }
+
+    private function runTreeChangedDuringExecution(): bool
+    {
+        if ($this->runTreeChanged) {
+            return true;
+        }
+
+        if ($this->startRunSnapshot === null) {
+            return false;
+        }
+
+        $current = (new ChangedFiles(TestSuite::getInstance()->rootPath))->runSnapshot();
+
+        if ($current === $this->startRunSnapshot) {
+            return false;
+        }
+
+        $this->runTreeChanged = true;
+        $this->renderBadge('ERROR', 'Project sources changed during the run — TIA state was not updated.');
+        $this->renderChild('Re-run the tests after edits settle; this run cannot certify the final source tree.');
+
+        return true;
     }
 
     private function loadGraph(string $projectRoot): ?Graph
@@ -577,6 +605,13 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
             return;
         }
 
+        if ($this->runTreeChangedDuringExecution()) {
+            $recorder->reset();
+            $this->coverageCollector->reset();
+
+            return;
+        }
+
         $this->graphWritten = true;
 
         $projectRoot = TestSuite::getInstance()->rootPath;
@@ -668,6 +703,12 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
 
         if ($this->writesSuppressed) {
             return $exitCode;
+        }
+
+        if ($this->runTreeChangedDuringExecution()) {
+            $this->purgeWorkerPartials();
+
+            return $exitCode === 0 ? 1 : $exitCode;
         }
 
         if ($this->resultsOnlyWrites) {
@@ -838,6 +879,15 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
             Panic::with(new ChangedFiles($projectRoot)->hasRemote()
                 ? new TiaRequiresDefaultBranch
                 : new TiaRequiresRemote);
+        }
+
+        $this->startRunSnapshot = (new ChangedFiles($projectRoot))->runSnapshot();
+
+        if ($this->startRunSnapshot === null) {
+            $this->renderBadge('WARN', 'Unable to snapshot project sources — running the full suite without TIA.');
+            $this->writesSuppressed = true;
+
+            return $arguments;
         }
 
         $fingerprint = Fingerprint::compute($projectRoot);

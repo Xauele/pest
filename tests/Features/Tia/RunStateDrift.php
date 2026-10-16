@@ -1,0 +1,117 @@
+<?php
+
+declare(strict_types=1);
+
+use Tests\Fixtures\Tia\Project;
+
+afterEach(function (): void {
+    Project::destroyAll();
+});
+
+test('a source edit during replay cannot be stamped as tested', function (array $arguments, bool $dirtyBeforeRun): void {
+    $project = Project::make('master');
+    $project->seed('master');
+
+    // Edit a test so that the first run executes it, while Greeter is replayable.
+    $project->write('tests/Unit/CalculatorTest.php', <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        use Fixture\App\Calculator;
+
+        test('adds two numbers', function (): void {
+            $source = dirname(__DIR__, 2).'/app/Greeter.php';
+            $contents = (string) file_get_contents($source);
+
+            if (! str_contains($contents, 'function changedDuringTest')) {
+                $contents = str_replace(
+                    '    public function greet',
+                    "    public function changedDuringTest(): int { return 42; }\n\n    public function greet",
+                    $contents,
+                );
+                file_put_contents($source, $contents);
+            }
+
+            expect((new Calculator)->add(1, 2))->toBe(3);
+        });
+
+        test('subtracts two numbers', function (): void {
+            expect((new Calculator)->subtract(3, 1))->toBe(2);
+        });
+        PHP);
+
+    if ($dirtyBeforeRun) {
+        $source = (string) file_get_contents($project->path('app/Greeter.php'));
+        $project->write('app/Greeter.php', str_replace(
+            '    public function greet',
+            "    public function changedBeforeTest(): int { return 1; }\n\n    public function greet",
+            $source,
+        ));
+    }
+
+    $previous = $project->graph();
+    $first = $project->pest('--tia', ...$arguments);
+
+    expect($first->tally())->toContain('6 passed')
+        ->and($first->exitCode)->toBe(1, $first->describe())
+        ->and($first->output)->toContain('Project sources changed during the run')
+        ->and($project->graph())->toEqual($previous);
+
+    // The edit remains pending, so the previously replayed Greeter tests must run.
+    $second = $project->pest('--tia', ...$arguments);
+
+    expect($second->exitCode)->toBe(0, $second->describe())
+        ->and($second->affected())->toBeGreaterThanOrEqual(2, $second->describe());
+})->with([
+    'sequential clean' => [[], false],
+    'sequential dirty' => [[], true],
+    'parallel clean' => [['--parallel', '--processes=2'], false],
+    'parallel dirty' => [['--parallel', '--processes=2'], true],
+])->skipOnWindows();
+
+test('a working tree that was dirty before the run remains valid if it stays unchanged', function (array $arguments): void {
+    $project = Project::make('master');
+    $project->seed('master');
+
+    $source = (string) file_get_contents($project->path('app/Greeter.php'));
+    $project->write('app/Greeter.php', str_replace(
+        '    public function greet',
+        "    public function alreadyDirty(): bool { return true; }\n\n    public function greet",
+        $source,
+    ));
+
+    $result = $project->pest('--tia', ...$arguments);
+
+    expect($result->exitCode)->toBe(0, $result->describe())
+        ->and($result->output)->not->toContain('Project sources changed during the run');
+})->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
+
+test('fresh recording rejects a new source file created during execution', function (array $arguments): void {
+    $project = Project::make('master');
+    $project->seed('master');
+
+    $project->write('tests/Unit/CalculatorTest.php', <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        use Fixture\App\Calculator;
+
+        test('adds two numbers', function (): void {
+            file_put_contents(dirname(__DIR__, 2).'/app/GeneratedDuringRun.php', "<?php\n// created during test\n");
+            expect((new Calculator)->add(1, 2))->toBe(3);
+        });
+
+        test('subtracts two numbers', function (): void {
+            expect((new Calculator)->subtract(3, 1))->toBe(2);
+        });
+        PHP);
+
+    $result = $project->pest('--tia', '--fresh', ...$arguments);
+
+    expect($result->tally())->toContain('6 passed')
+        ->and($result->exitCode)->toBe(1, $result->describe())
+        ->and($result->output)->toContain('Project sources changed during the run')
+        ->and($project->graphExists())->toBeFalse();
+})->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();

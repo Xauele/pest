@@ -20,6 +20,36 @@ final readonly class ChangedFiles
     }
 
     /**
+     * Capture the behaviourally relevant tree TIA starts with. An
+     * unreadable file must not be silently treated as unchanged.
+     *
+     * @return array{sha: ?string, tree: array<string, string>}|null
+     */
+    public function runSnapshot(): ?array
+    {
+        try {
+            $sha = $this->currentSha();
+            $files = $this->since($sha);
+        } catch (MissingDependency) {
+            return null;
+        }
+
+        if ($files === null) {
+            return null;
+        }
+
+        $tree = $this->snapshotTree($files);
+
+        if (count($tree) !== count($files)) {
+            return null;
+        }
+
+        ksort($tree);
+
+        return ['sha' => $sha, 'tree' => $tree];
+    }
+
+    /**
      * @param  array<int, string>  $files  project-relative paths.
      * @param  array<string, string>  $lastRunTree  path → content hash from last run.
      * @return array<int, string>
