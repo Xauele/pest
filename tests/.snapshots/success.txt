@@ -1963,6 +1963,9 @@
   ✓ it records assertions against the same per-dataset key
   ✓ it leaves a test without a dataset keyed by class and method
 
+   PASS  Tests\Unit\Plugins\Tia\RunStartStamp
+  ✓ a graph baseline stays anchored to the run-start snapshot
+
    PASS  Tests\Unit\Plugins\Tia\Storage
   ✓ it uses a project-relative configured directory
   ✓ it uses an absolute configured directory
@@ -2263,4 +2266,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1604 passed (3502 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1605 passed (3504 assertions)
