@@ -260,8 +260,8 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
         }
 
         $this->runTreeChanged = true;
-        $this->renderBadge('ERROR', 'Project sources changed during the run — TIA state was not updated.');
-        $this->renderChild('Re-run the tests after edits settle; this run cannot certify the final source tree.');
+        $this->renderBadge('ERROR', 'Project sources changed during the run — TIA cannot certify this tree.');
+        $this->renderChild('Re-run after edits settle; the graph baseline remains anchored to the run-start tree.');
 
         return true;
     }
@@ -689,6 +689,24 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
     }
 
     public function addOutput(int $exitCode): int
+    {
+        $exitCode = $this->addOutputBeforeTermination($exitCode);
+
+        if (! Parallel::isWorker()) {
+            // The kernel normally terminates after calculating its exit code.
+            $this->terminate();
+
+            if ($this->runTreeChangedDuringExecution()) {
+                $this->purgeWorkerPartials();
+
+                return $exitCode === 0 ? 1 : $exitCode;
+            }
+        }
+
+        return $exitCode;
+    }
+
+    private function addOutputBeforeTermination(int $exitCode): int
     {
         if (Parallel::isWorker()) {
             return $exitCode;

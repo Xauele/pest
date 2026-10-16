@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Pest\Plugins\Tia\ChangedFiles;
+use Pest\Support\Coverage;
 use Tests\Fixtures\Tia\Project;
 
 afterEach(function (): void {
@@ -115,7 +116,7 @@ test('a PHPDoc-only edit cannot slip past the run integrity check', function (ar
         ->and($second->tally())->toContain('6 passed');
 })->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
 
-test('run integrity records PHPDoc edits without changing the behavioural baseline', function (): void {
+test('a comment-only dirty path is snapshotted without unnecessarily selecting its tests', function (): void {
     $project = Project::make('master');
     $changed = new ChangedFiles($project->path);
     $before = $changed->runSnapshot();
@@ -135,8 +136,9 @@ test('run integrity records PHPDoc edits without changing the behavioural baseli
     assert($before !== null && $after !== null);
 
     expect($after['sha'])->toBe($before['sha'])
-        ->and($after['tree'])->toBe($before['tree'])
-        ->and($after['raw'])->not->toBe($before['raw']);
+        ->and($after['tree'])->toHaveKey('app/Greeter.php')
+        ->and($after['raw'])->not->toBe($before['raw'])
+        ->and($changed->filterUnchangedSinceLastRun(['app/Greeter.php'], $after['tree']))->toBe([]);
 })->skipOnWindows();
 
 test('an unchanged PHPDoc edit made before the run is not mistaken for run drift', function (array $arguments): void {
@@ -203,3 +205,19 @@ test('fresh recording rejects a new source file created during execution', funct
         ->and($result->output)->toContain('Project sources changed during the run')
         ->and($graphAfter === null || $graphAfter === $previous)->toBeTrue();
 })->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
+
+test('generated PHPUnit configuration cannot invalidate TIA recording during termination', function (): void {
+    $project = Project::make('master');
+    $project->git()->run(['rm', 'phpunit.xml']);
+    $project->write('src/.gitkeep', '');
+    $project->git()->commit('Test without a configured PHPUnit XML');
+
+    $result = $project->pest('--tia');
+
+    expect($result->exitCode)->toBe(0, $result->describe())
+        ->and($result->tally())->toContain('6 passed')
+        ->and($project->graphExists())->toBeTrue()
+        ->and($result->output)->not->toContain('Project sources changed during the run')
+        ->and(is_file($project->path('.pest.xml')))->toBeFalse();
+})->skipOnWindows()->skip(! Coverage::isAvailable(), 'Coverage is not available');
+

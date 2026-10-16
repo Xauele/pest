@@ -25,26 +25,21 @@ final readonly class ChangedFiles
     public function runSnapshot(): ?array
     {
         try {
+            // HEAD is the snapshot baseline: no per-file git show is needed.
             $sha = $this->currentSha();
-            $files = $this->since($sha);
-            $dirtyPaths = $this->workingTreeChanges();
-
-            if ($files === null) {
-                return null;
-            }
-
+            $files = $this->workingTreeChanges();
             $tree = $this->snapshotTree($files);
-            $raw = $this->snapshotRawTree($dirtyPaths);
+            $raw = $this->snapshotRawTree($files);
 
             if ($raw === null || count($tree) !== count($files)) {
                 return null;
             }
 
             $dirtyAtEnd = $this->workingTreeChanges();
-            sort($dirtyPaths);
+            sort($files);
             sort($dirtyAtEnd);
 
-            if ($this->currentSha() !== $sha || $dirtyAtEnd !== $dirtyPaths) {
+            if ($this->currentSha() !== $sha || $dirtyAtEnd !== $files) {
                 return null;
             }
         } catch (MissingDependency) {
