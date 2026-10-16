@@ -266,6 +266,21 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
         return true;
     }
 
+    /**
+     * Keep the baseline anchored to the state captured before executing tests.
+     * A late source edit must remain pending, even if it occurs between the
+     * drift check and saving the graph.
+     */
+    private function stampRunStart(Graph $graph): void
+    {
+        if ($this->startRunSnapshot === null) {
+            return;
+        }
+
+        $graph->setRecordedAtSha($this->branch, $this->startRunSnapshot['sha']);
+        $graph->setLastRunTree($this->branch, $this->startRunSnapshot['tree']);
+    }
+
     private function loadGraph(string $projectRoot): ?Graph
     {
         $json = $this->state->read(self::KEY_GRAPH);
@@ -646,9 +661,6 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
             return;
         }
 
-        $changedFiles = new ChangedFiles($projectRoot);
-        $currentSha = $changedFiles->currentSha();
-
         $currentFingerprint = Fingerprint::compute($projectRoot);
 
         if ($this->structuralFingerprintShifted($currentFingerprint)) {
@@ -662,11 +674,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
 
         $graph = $this->loadGraph($projectRoot) ?? new Graph($projectRoot);
         $graph->setFingerprint($currentFingerprint);
-        $graph->setRecordedAtSha($this->branch, $currentSha);
-        $graph->setLastRunTree(
-            $this->branch,
-            $changedFiles->snapshotTree($changedFiles->since($currentSha) ?? []),
-        );
+        $this->stampRunStart($graph);
         $graph->replaceEdges($perTest, keepExisting: $this->piggybackCoverage);
         $graph->replaceTestTables($perTestTables);
         $graph->replaceTestInertiaComponents($perTestInertia);
@@ -738,9 +746,6 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
             return $exitCode;
         }
 
-        $changedFiles = new ChangedFiles($projectRoot);
-        $currentSha = $changedFiles->currentSha();
-
         $currentFingerprint = Fingerprint::compute($projectRoot);
 
         if ($this->structuralFingerprintShifted($currentFingerprint)) {
@@ -756,11 +761,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
 
         $graph = $this->loadGraph($projectRoot) ?? new Graph($projectRoot);
         $graph->setFingerprint($currentFingerprint);
-        $graph->setRecordedAtSha($this->branch, $currentSha);
-        $graph->setLastRunTree(
-            $this->branch,
-            $changedFiles->snapshotTree($changedFiles->since($currentSha) ?? []),
-        );
+        $this->stampRunStart($graph);
 
         [$finalised, $finalisedTables, $finalisedInertia] = $this->consumePartials($partialKeys);
 
@@ -1721,15 +1722,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
             return;
         }
 
-        $changedFiles = new ChangedFiles($projectRoot);
-        $currentSha = $changedFiles->currentSha();
-
-        if ($currentSha !== null) {
-            $graph->setRecordedAtSha($this->branch, $currentSha);
-        }
-
-        $workingTreeFiles = $changedFiles->since($currentSha) ?? [];
-        $graph->setLastRunTree($this->branch, $changedFiles->snapshotTree($workingTreeFiles));
+        $this->stampRunStart($graph);
 
         $this->saveGraph($graph);
     }
