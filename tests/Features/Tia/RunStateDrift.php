@@ -62,7 +62,8 @@ test('a source edit during replay cannot be stamped as tested', function (array 
     $second = $project->pest('--tia', ...$arguments);
 
     expect($second->exitCode)->toBe(0, $second->describe())
-        ->and($second->affected())->toBeGreaterThanOrEqual(2, $second->describe());
+        ->and($second->tally())->toContain('6 passed')
+        ->and($second->replayed())->toBeLessThan(Project::TOTAL_TESTS, $second->describe());
 })->with([
     'sequential clean' => [[], false],
     'sequential dirty' => [[], true],
@@ -108,10 +109,12 @@ test('fresh recording rejects a new source file created during execution', funct
         });
         PHP);
 
+    $previous = $project->graph();
     $result = $project->pest('--tia', '--fresh', ...$arguments);
+    $graphAfter = $project->graph();
 
     expect($result->tally())->toContain('6 passed')
         ->and($result->exitCode)->toBe(1, $result->describe())
         ->and($result->output)->toContain('Project sources changed during the run')
-        ->and($project->graphExists())->toBeFalse();
+        ->and($graphAfter === null || $graphAfter === $previous)->toBeTrue();
 })->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();

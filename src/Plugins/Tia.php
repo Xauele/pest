@@ -253,7 +253,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
             return false;
         }
 
-        $current = (new ChangedFiles(TestSuite::getInstance()->rootPath))->runSnapshot();
+        $current = new ChangedFiles(TestSuite::getInstance()->rootPath)->runSnapshot();
 
         if ($current === $this->startRunSnapshot) {
             return false;
@@ -881,7 +881,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
                 : new TiaRequiresRemote);
         }
 
-        $this->startRunSnapshot = (new ChangedFiles($projectRoot))->runSnapshot();
+        $this->startRunSnapshot = new ChangedFiles($projectRoot)->runSnapshot();
 
         if ($this->startRunSnapshot === null) {
             $this->renderBadge('WARN', 'Unable to snapshot project sources — running the full suite without TIA.');
