@@ -39,7 +39,7 @@ jobs:
       with:
         php-version: ${{ matrix.php }}
         tools: composer:v2
-        coverage: none
+        coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.php == '8.4' && 'xdebug' || 'none' }}
         extensions: sockets
 
     - name: Get Composer cache directory

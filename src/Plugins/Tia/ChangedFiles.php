@@ -20,9 +20,6 @@ final readonly class ChangedFiles
     }
 
     /**
-     * Capture both the behavioural tree used for TIA baselines and the exact
-     * dirty-file state used to detect edits made while tests are executing.
-     *
      * @return array{sha: ?string, tree: array<string, string>, raw: array<string, string>}|null
      */
     public function runSnapshot(): ?array
@@ -43,8 +40,6 @@ final readonly class ChangedFiles
                 return null;
             }
 
-            // Reject a snapshot if HEAD or the set of dirty paths moved as
-            // Git and the filesystem were being inspected.
             $dirtyAtEnd = $this->workingTreeChanges();
             sort($dirtyPaths);
             sort($dirtyAtEnd);
@@ -62,9 +57,6 @@ final readonly class ChangedFiles
     }
 
     /**
-     * Unlike ContentHash, this must not discard comments or PHPDoc: runtime
-     * consumers may read annotations even when PHP tokens are unchanged.
-     *
      * @param  array<int, string>  $files
      * @return array<string, string>|null
      */
