@@ -266,7 +266,6 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
         return true;
     }
 
-    // A late edit must remain pending even if it happens after the drift check.
     private function stampRunStart(Graph $graph): void
     {
         if ($this->startRunSnapshot === null) {
