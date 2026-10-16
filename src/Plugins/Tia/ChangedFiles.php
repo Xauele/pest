@@ -25,7 +25,6 @@ final readonly class ChangedFiles
     public function runSnapshot(): ?array
     {
         try {
-            // HEAD is the snapshot baseline: no per-file git show is needed.
             $sha = $this->currentSha();
             $files = $this->workingTreeChanges();
             $tree = $this->snapshotTree($files);

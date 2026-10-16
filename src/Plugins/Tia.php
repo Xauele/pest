@@ -693,7 +693,6 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
         $exitCode = $this->addOutputBeforeTermination($exitCode);
 
         if (! Parallel::isWorker()) {
-            // The kernel normally terminates after calculating its exit code.
             $this->terminate();
 
             if ($this->runTreeChangedDuringExecution()) {
