@@ -178,7 +178,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
     /** @var array{structural: array<string, mixed>, environmental: array<string, mixed>}|null */
     private ?array $startFingerprint = null;
 
-    /** @var array{sha: ?string, tree: array<string, string>}|null */
+    /** @var array{sha: ?string, tree: array<string, string>, raw: array<string, string>}|null */
     private ?array $startRunSnapshot = null;
 
     private bool $runTreeChanged = false;

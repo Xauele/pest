@@ -20,30 +20,96 @@ final readonly class ChangedFiles
     }
 
     /**
-     * @return array{sha: ?string, tree: array<string, string>}|null
+     * Capture both the behavioural tree used for TIA baselines and the exact
+     * dirty-file state used to detect edits made while tests are executing.
+     *
+     * @return array{sha: ?string, tree: array<string, string>, raw: array<string, string>}|null
      */
     public function runSnapshot(): ?array
     {
         try {
             $sha = $this->currentSha();
             $files = $this->since($sha);
+            $dirtyPaths = $this->workingTreeChanges();
+
+            if ($files === null) {
+                return null;
+            }
+
+            $tree = $this->snapshotTree($files);
+            $raw = $this->snapshotRawTree($dirtyPaths);
+
+            if ($raw === null || count($tree) !== count($files)) {
+                return null;
+            }
+
+            // Reject a snapshot if HEAD or the set of dirty paths moved as
+            // Git and the filesystem were being inspected.
+            $dirtyAtEnd = $this->workingTreeChanges();
+            sort($dirtyPaths);
+            sort($dirtyAtEnd);
+
+            if ($this->currentSha() !== $sha || $dirtyAtEnd !== $dirtyPaths) {
+                return null;
+            }
         } catch (MissingDependency) {
-            return null;
-        }
-
-        if ($files === null) {
-            return null;
-        }
-
-        $tree = $this->snapshotTree($files);
-
-        if (count($tree) !== count($files)) {
             return null;
         }
 
         ksort($tree);
 
-        return ['sha' => $sha, 'tree' => $tree];
+        return ['sha' => $sha, 'tree' => $tree, 'raw' => $raw];
+    }
+
+    /**
+     * Unlike ContentHash, this must not discard comments or PHPDoc: runtime
+     * consumers may read annotations even when PHP tokens are unchanged.
+     *
+     * @param  array<int, string>  $files
+     * @return array<string, string>|null
+     */
+    private function snapshotRawTree(array $files): ?array
+    {
+        $tree = [];
+
+        foreach ($files as $file) {
+            $absolute = $this->projectRoot.DIRECTORY_SEPARATOR.$file;
+
+            if (is_link($absolute)) {
+                $target = readlink($absolute);
+
+                if ($target === false) {
+                    return null;
+                }
+
+                $tree[$file] = 'link:'.hash('xxh128', $target);
+
+                continue;
+            }
+
+            if (! file_exists($absolute)) {
+                $tree[$file] = 'missing';
+
+                continue;
+            }
+
+            if (! is_file($absolute)) {
+                return null;
+            }
+
+            $hash = @hash_file('xxh128', $absolute);
+            $mode = @fileperms($absolute);
+
+            if ($hash === false || $mode === false) {
+                return null;
+            }
+
+            $tree[$file] = sprintf('file:%o:%s', $mode & 0777, $hash);
+        }
+
+        ksort($tree);
+
+        return $tree;
     }
 
     /**
