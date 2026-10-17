@@ -19,7 +19,7 @@ test('a branch name git allows is a branch key TIA can hold', function (string $
 
     expect($result->replayed())->toBe(Project::TOTAL_TESTS, $result->describe())
         ->and($result->uncached())->toBe(0, $result->describe())
-        ->and($project->branchKeys())->toBe(['master', $branch])
+        ->and($project->branchKeys())->toBe(['master', $branch], $result->describe().' Graph branches: '.json_encode(array_keys($project->graph()['baselines'] ?? [])))
         ->and($delta->baselineUntouched('master'))->toBeTrue($delta->summary());
 })->with([
     'slashes' => 'feature/deep/nesting',
