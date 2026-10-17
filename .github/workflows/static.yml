@@ -68,3 +68,9 @@ jobs:
 
     - name: Style
       run: composer test:lint
+
+    - name: Explain style failures
+      if: failure()
+      run: |
+        vendor/bin/pint --parallel || true
+        git --no-pager diff -- .
