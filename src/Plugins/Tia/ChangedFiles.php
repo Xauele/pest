@@ -471,7 +471,7 @@ final readonly class ChangedFiles
             return false;
         }
 
-        return preg_match('/^(?:junit|clover|coverage|test[-_]?results)(?:[._-][^/]*)?\.(?:xml|json|log)$/i', $normalised) !== 1;
+        return preg_match('#^(?:junit|clover|coverage|test[-_]?results)(?:[._-][^/]*)?\.(?:xml|json|log)$#i', $normalised) !== 1;
     }
 
     public function currentSha(): ?string
