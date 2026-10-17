@@ -560,7 +560,7 @@ describe('buildListTestIdsCommand', function (): void {
                 '--update-shards',
                 '--test-directory=tests',
                 '--no-tia',
-            '--list-test-ids',
+                '--list-test-ids',
             ]);
     });
 });
