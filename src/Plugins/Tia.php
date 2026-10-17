@@ -381,6 +381,34 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
         return filter_var(getenv($name), FILTER_VALIDATE_BOOL);
     }
 
+    public function isTestReplayedForCoverage(string $filename, string $testId): bool
+    {
+        if ($this->replayGraph instanceof Graph === false) {
+            return false;
+        }
+
+        $root = rtrim(TestSuite::getInstance()->rootPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $real = @realpath($filename);
+
+        if ($real === false || str_starts_with($real, $root) === false) {
+            return false;
+        }
+
+        $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($real, strlen($root)));
+
+        if (isset($this->affectedFiles[$relative]) || $this->replayGraph->knowsTest($relative) === false) {
+            return false;
+        }
+
+        $status = $this->replayGraph->getResult($this->branch, $testId);
+
+        if ($status instanceof TestStatus) {
+            return $this->replayGraph->shouldRerunStatus($status) === false;
+        }
+
+        return false;
+    }
+
     public function getStatus(string $filename, string $testId): ?TestStatus
     {
         if (! $this->replayGraph instanceof Graph) {
