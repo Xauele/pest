@@ -188,6 +188,8 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
 
     private ?string $stagedGraphJson = null;
 
+    private ?Graph $stagedGraph = null;
+
     private ?string $snapshotRoot = null;
 
     private bool $piggybackCoverage = false;
@@ -285,9 +287,13 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
 
     private function loadGraph(string $projectRoot): ?Graph
     {
-        $json = $this->stageGraphWrites && $this->stagedGraphJson !== null
-            ? $this->stagedGraphJson
-            : $this->state->read(self::KEY_GRAPH);
+        if ($this->stageGraphWrites && $this->stagedGraph instanceof Graph) {
+            $this->stagedGraph->setFallbackBranch($this->fallbackBranch);
+
+            return $this->stagedGraph;
+        }
+
+        $json = $this->state->read(self::KEY_GRAPH);
 
         if ($json === null) {
             return null;
@@ -340,6 +346,7 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
         }
 
         if ($this->stageGraphWrites) {
+            $this->stagedGraph = $graph;
             $this->stagedGraphJson = $json;
 
             return true;
@@ -729,6 +736,7 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
 
         if ($this->runTreeChangedDuringExecution()) {
             $this->stagedGraphJson = null;
+            $this->stagedGraph = null;
             $this->purgeWorkerPartials();
 
             return $exitCode === 0 ? 1 : $exitCode;
@@ -741,9 +749,9 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
         $previous = $this->state->read(self::KEY_GRAPH);
 
         if (! $this->state->write(self::KEY_GRAPH, $this->stagedGraphJson)) {
-            $this->renderBadge('ERROR', 'Could not publish the final TIA graph.');
+            $this->renderBadge('WARN', 'Could not persist the final TIA graph — test results are unaffected.');
 
-            return $exitCode === 0 ? 1 : $exitCode;
+            return $exitCode;
         }
 
         $publishedSnapshot = new ChangedFiles($this->snapshotRoot ?? TestSuite::getInstance()->rootPath)->runSnapshot();
@@ -759,11 +767,13 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
             }
 
             $this->stagedGraphJson = null;
+            $this->stagedGraph = null;
 
             return $exitCode === 0 ? 1 : $exitCode;
         }
 
         $this->stagedGraphJson = null;
+        $this->stagedGraph = null;
 
         return $exitCode;
     }

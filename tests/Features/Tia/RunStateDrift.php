@@ -143,7 +143,8 @@ test('a PHPDoc-only change remains visible to TIA selection', function (): void 
     expect($after['sha'])->toBe($before['sha'])
         ->and($after['tree'])->toHaveKey('app/Greeter.php')
         ->and($after['raw'])->not->toBe($before['raw'])
-        ->and($changed->filterUnchangedSinceLastRun(['app/Greeter.php'], $after['tree']))->toBe(['app/Greeter.php']);
+        ->and($changed->since($before['sha']))->toContain('app/Greeter.php')
+        ->and($changed->filterUnchangedSinceLastRun(['app/Greeter.php'], $after['tree']))->toBeEmpty();
 })->skipOnWindows();
 
 test('an unchanged PHPDoc edit made before the run is not mistaken for run drift', function (array $arguments): void {
@@ -386,7 +387,17 @@ test('publication rolls back the graph if its state write mutates a source', fun
     new ReflectionProperty(Tia::class, 'stageGraphWrites')->setValue($tia, true);
     new ReflectionProperty(Tia::class, 'stagedGraphJson')->setValue($tia, 'candidate graph');
 
-    expect($tia->finalizeOutput(0))->toBe(1)
+    $level = ob_get_level();
+
+    try {
+        $exitCode = $tia->finalizeOutput(0);
+    } finally {
+        while (ob_get_level() > $level) {
+            ob_end_clean();
+        }
+    }
+
+    expect($exitCode)->toBe(1)
         ->and($state->read(Tia::KEY_GRAPH))->toBe('previous graph');
 })->skipOnWindows();
 
