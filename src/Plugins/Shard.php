@@ -300,7 +300,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             }
 
             $originalClass = $matches[1];
-            $class = str_starts_with($originalClass, 'P\\\\') ? substr($originalClass, 2) : $originalClass;
+            $class = str_starts_with($originalClass, 'P\\') ? substr($originalClass, 2) : $originalClass;
 
             if (isset($originalClasses[$class]) && $originalClasses[$class] !== $originalClass) {
                 throw new InvalidOption(sprintf(

@@ -420,28 +420,28 @@ OUT;
         $shard = new Shard(new BufferedOutput);
         $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
 
-        $method->invoke($shard, "P\\\\Acme\\\\RealTest::method\\nWARN unexpected output");
+        $method->invoke($shard, "P\\Acme\\RealTest::method\nWARN unexpected output");
     })->throws(InvalidOption::class, 'An unrecognised test ID')->group('integration');
 
     it('rejects duplicated method and dataset IDs', function (): void {
         $shard = new Shard(new BufferedOutput);
         $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
 
-        $method->invoke($shard, "P\\\\Acme\\\\RealTest::method#first\\nP\\\\Acme\\\\RealTest::method#first");
+        $method->invoke($shard, "P\\Acme\\RealTest::method#first\nP\\Acme\\RealTest::method#first");
     })->throws(InvalidOption::class, 'Duplicate test ID')->group('integration');
 
     it('retains a canonical ID for each dataset row in native discovery', function (): void {
         $shard = new Shard(new BufferedOutput);
         $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
 
-        expect($method->invoke($shard, "P\\\\Acme\\\\RealTest::method#first\\nP\\\\Acme\\\\RealTest::method#second"))->toBe(['Acme\\\\RealTest']);
+        expect($method->invoke($shard, "P\\Acme\\RealTest::method#first\nP\\Acme\\RealTest::method#second"))->toBe(['Acme\\RealTest']);
 
         $property = new ReflectionProperty(Shard::class, 'discoveredTestIds');
 
         expect($property->getValue($shard))->toBe([
-            'Acme\\\\RealTest' => [
-                'Acme\\\\RealTest::method#first' => true,
-                'Acme\\\\RealTest::method#second' => true,
+            'Acme\\RealTest' => [
+                'Acme\\RealTest::method#first' => true,
+                'Acme\\RealTest::method#second' => true,
             ],
         ]);
     })->group('integration');
