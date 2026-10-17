@@ -296,7 +296,10 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             $entry = rtrim($entry, chr(13));
 
             if (preg_match('/^((?:P\\\\)?[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*(?:\\\\[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*)*)::(.+)$/uD', $entry, $matches) !== 1) {
-                throw new InvalidOption('An unrecognised test ID was found in [--list-test-ids]. Refusing incomplete shard discovery.');
+                throw new InvalidOption(sprintf(
+                    'An unrecognised test ID was found in [--list-test-ids]: %s. Refusing incomplete shard discovery.',
+                    json_encode(substr($entry, 0, 160), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                ));
             }
 
             $originalClass = $matches[1];
