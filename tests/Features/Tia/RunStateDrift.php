@@ -113,10 +113,11 @@ test('a PHPDoc-only edit cannot slip past the run integrity check', function (ar
     $second = $project->pest('--tia', ...$arguments);
 
     expect($second->exitCode)->toBe(0, $second->describe())
-        ->and($second->tally())->toContain('6 passed');
+        ->and($second->tally())->toContain('6 passed')
+        ->and($second->replayed())->toBeLessThan(Project::TOTAL_TESTS, $second->describe());
 })->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
 
-test('a comment-only dirty path is snapshotted without unnecessarily selecting its tests', function (): void {
+test('a PHPDoc-only change remains visible to TIA selection', function (): void {
     $project = Project::make('master');
     $changed = new ChangedFiles($project->path);
     $before = $changed->runSnapshot();
@@ -138,7 +139,7 @@ test('a comment-only dirty path is snapshotted without unnecessarily selecting i
     expect($after['sha'])->toBe($before['sha'])
         ->and($after['tree'])->toHaveKey('app/Greeter.php')
         ->and($after['raw'])->not->toBe($before['raw'])
-        ->and($changed->filterUnchangedSinceLastRun(['app/Greeter.php'], $after['tree']))->toBeEmpty();
+        ->and($changed->filterUnchangedSinceLastRun(['app/Greeter.php'], $after['tree']))->toBe(['app/Greeter.php']);
 })->skipOnWindows();
 
 test('an unchanged PHPDoc edit made before the run is not mistaken for run drift', function (array $arguments): void {
@@ -218,3 +219,52 @@ test('cleanup of a transient PHPUnit configuration cannot invalidate TIA recordi
         ->and($result->output)->not->toContain('Project sources changed during the run')
         ->and($project->path('.pest.xml'))->not->toBeFile();
 })->skipOnWindows()->skip(! Coverage::isAvailable(), 'Coverage is not available');
+
+test('a PHPDoc-only edit actually executes its covering test rather than replaying its pass', function (array $arguments): void {
+    $project = Project::make('master');
+    $original = (string) file_get_contents($project->path('tests/Unit/GreeterTest.php'));
+    $project->write('tests/Unit/GreeterTest.php', str_replace(
+        "expect((new Greeter)->greet('Nuno'))->toBe('Hello, Nuno!');",
+        "file_put_contents(dirname(__DIR__, 2).'/.home/phpdoc-probe', 'executed');\n    expect((new Greeter)->greet('Nuno'))->toBe('Hello, Nuno!');",
+        $original,
+    ));
+    $project->git()->commit('add a real execution probe');
+    $project->seed('master');
+
+    $source = (string) file_get_contents($project->path('app/Greeter.php'));
+    $project->write('app/Greeter.php', str_replace(
+        '    public function greet',
+        "    /** @Route(\"/changed\") */\n    public function greet",
+        $source,
+    ));
+
+    $result = $project->pest('--tia', ...$arguments);
+
+    expect($result->exitCode)->toBe(0, $result->describe())
+        ->and($project->path('.home/phpdoc-probe'))->toBeFile()
+        ->and($result->replayed())->toBeLessThan(Project::TOTAL_TESTS, $result->describe());
+})->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
+
+test('an untracked JUnit report written during tests does not count as source drift', function (array $arguments): void {
+    $project = Project::make('master');
+    $project->seed('master');
+
+    $project->write('tests/Unit/CalculatorTest.php', <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        use Fixture\App\Calculator;
+
+        test('adds two numbers', function (): void {
+            file_put_contents(dirname(__DIR__, 2).'/junit-output.xml', '<testsuites/>');
+            expect((new Calculator)->add(1, 2))->toBe(3);
+        });
+        PHP);
+
+    $result = $project->pest('--tia', ...$arguments);
+
+    expect($result->exitCode)->toBe(0, $result->describe())
+        ->and($result->output)->not->toContain('Project sources changed during the run')
+        ->and($project->path('junit-output.xml'))->toBeFile();
+})->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();

@@ -26,7 +26,7 @@ final readonly class ChangedFiles
     {
         try {
             $sha = $this->currentSha();
-            $files = $this->workingTreeChanges();
+            $files = $this->workingTreeChanges(forSnapshot: true);
             $tree = $this->snapshotTree($files);
             $raw = $this->snapshotRawTree($files);
 
@@ -34,7 +34,7 @@ final readonly class ChangedFiles
                 return null;
             }
 
-            $dirtyAtEnd = $this->workingTreeChanges();
+            $dirtyAtEnd = $this->workingTreeChanges(forSnapshot: true);
             sort($files);
             sort($dirtyAtEnd);
 
@@ -412,7 +412,7 @@ final readonly class ChangedFiles
     /**
      * @return array<int, string>
      */
-    private function workingTreeChanges(): array
+    private function workingTreeChanges(bool $forSnapshot = false): array
     {
         $output = $this->scan()->raw(['status', '--porcelain', '-z', '--untracked-files=all']);
 
@@ -438,6 +438,10 @@ final readonly class ChangedFiles
             $status = substr($record, 0, 2);
             $path = substr($record, 3);
 
+            if ($forSnapshot && $status === '??' && ! $this->isUntrackedSourceCandidate($path)) {
+                continue;
+            }
+
             if ($status[0] === 'R' || $status[0] === 'C') {
                 $files[] = $path;
 
@@ -453,6 +457,38 @@ final readonly class ChangedFiles
         }
 
         return $files;
+    }
+
+    /**
+     * Only untracked source and configuration files are part of the run-integrity
+     * snapshot. Tracked files are always included, regardless of extension.
+     */
+    private function isUntrackedSourceCandidate(string $path): bool
+    {
+        $normalised = str_replace('\\', '/', $path);
+        $basename = basename($normalised);
+
+        if (in_array($basename, ['.pest.xml', 'junit.xml', 'junit-output.xml', 'coverage.xml', 'coverage-report.xml'], true)) {
+            return false;
+        }
+
+        foreach (['app/', 'src/', 'lib/', 'tests/', 'tests-external/', 'config/', 'routes/', 'database/', 'bootstrap/', 'resources/', 'public/', 'modules/', 'packages/', 'lang/', 'views/'] as $prefix) {
+            if (str_starts_with($normalised, $prefix)) {
+                return true;
+            }
+        }
+
+        if (in_array($basename, ['composer.json', 'composer.lock', 'phpunit.xml', 'phpunit.xml.dist', 'pest.php', 'package.json', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'], true)) {
+            return true;
+        }
+
+        foreach (['.php', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.mjs', '.cjs', '.mts', '.blade.php', '.sql', '.twig', '.scss', '.css'] as $suffix) {
+            if (str_ends_with($basename, $suffix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function currentSha(): ?string
