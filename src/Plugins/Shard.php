@@ -9,7 +9,7 @@ use Pest\Contracts\Plugins\HandlesArguments;
 use Pest\Contracts\Plugins\Terminable;
 use Pest\Exceptions\InvalidOption;
 use Pest\Plugins\Shard\RunIntegrity;
-use Pest\Subscribers\EnsureShardTestIsPrepared;
+use Pest\Subscribers\EnsureShardTestIsFinished;
 use Pest\Subscribers\EnsureShardTestIsSkipped;
 use Pest\Subscribers\EnsureShardTimingFinished;
 use Pest\Subscribers\EnsureShardTimingsAreCollected;
@@ -451,7 +451,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
     {
         RunIntegrity::activate();
 
-        Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsPrepared);
+        Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsFinished);
         Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsSkipped);
     }
 

@@ -6,15 +6,15 @@ namespace Pest\Subscribers;
 
 use Pest\Plugins\Shard\RunIntegrity;
 use PHPUnit\Event\Code\TestMethod;
-use PHPUnit\Event\Test\Prepared;
-use PHPUnit\Event\Test\PreparedSubscriber;
+use PHPUnit\Event\Test\Finished;
+use PHPUnit\Event\Test\FinishedSubscriber;
 
 /**
  * @internal
  */
-final readonly class EnsureShardTestIsPrepared implements PreparedSubscriber
+final readonly class EnsureShardTestIsFinished implements FinishedSubscriber
 {
-    public function notify(Prepared $event): void
+    public function notify(Finished $event): void
     {
         $test = $event->test();
 

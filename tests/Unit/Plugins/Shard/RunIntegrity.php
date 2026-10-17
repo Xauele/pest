@@ -23,6 +23,16 @@ it('records only active runs and normalises generated Pest class names', functio
     ]);
 });
 
+it('does not mistake an observed class for proof that every assigned class completed', function (): void {
+    $expected = ['Tests\\A' => true, 'Tests\\B' => true];
+    $observed = ['Tests\\A' => true];
+
+    expect(RunIntegrity::difference($expected, $observed))->toBe([
+        'missing' => ['Tests\\B'],
+        'unexpected' => [],
+    ]);
+});
+
 it('detects missing and unexpected classes without relying on assertion counts', function (): void {
     $expected = ['Tests\\A' => true, 'Tests\\B' => true];
     $observed = ['Tests\\A' => true, 'Tests\\C' => true];
