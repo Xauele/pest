@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Pest\Plugins\Tia;
 use Pest\Plugins\Tia\ChangedFiles;
 use Pest\Plugins\Tia\Contracts\State;
+use Pest\Plugins\Tia\FileState;
 use Pest\Support\Coverage;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Fixtures\Tia\GitRepo;
@@ -477,7 +478,7 @@ test('an uncompleted graph publication cannot be replayed as certified', functio
     $project = Project::make('master');
     $project->seed('master');
 
-    $state = new \Pest\Plugins\Tia\FileState($project->graphDir());
+    $state = new FileState($project->graphDir());
     expect($state->write(Tia::KEY_RUN_PENDING, '{"pending":true}'))->toBeTrue();
 
     $result = $project->pest('--tia');
@@ -487,4 +488,3 @@ test('an uncompleted graph publication cannot be replayed as certified', functio
         ->and($result->replayed())->toBe(0)
         ->and($state->exists(Tia::KEY_RUN_PENDING))->toBeFalse();
 })->skipOnWindows()->skip(! Coverage::isAvailable(), 'Coverage is not available');
-
