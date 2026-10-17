@@ -466,6 +466,14 @@ OUT;
 });
 
 describe('buildListTestIdsCommand', function (): void {
+    it('keeps TIA disabled during machine-readable discovery even when requested on the parent', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('buildListTestIdsCommand');
+        $command = $method->invoke($shard, ['bin/pest', '--tia'], 'tests');
+
+        expect($command)->toContain('--tia', '--no-tia', '--list-test-ids');
+    })->group('integration');
+
     it('builds the list-test-ids command with the forwarded --test-directory', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
@@ -480,6 +488,7 @@ describe('buildListTestIdsCommand', function (): void {
             'bin/pest',
             '--update-shards',
             '--test-directory=custom/suite',
+            '--no-tia',
             '--list-test-ids',
         ]);
     });
@@ -498,6 +507,7 @@ describe('buildListTestIdsCommand', function (): void {
             'bin/pest',
             '--update-shards',
             '--test-directory=tests',
+            '--no-tia',
             '--list-test-ids',
         ]);
     });
@@ -528,6 +538,7 @@ describe('buildListTestIdsCommand', function (): void {
             'bin/pest',
             '--update-shards',
             '--test-directory=tests',
+            '--no-tia',
             '--list-test-ids',
         ]);
     });
@@ -548,7 +559,8 @@ describe('buildListTestIdsCommand', function (): void {
                 'bin/pest',
                 '--update-shards',
                 '--test-directory=tests',
-                '--list-test-ids',
+                '--no-tia',
+            '--list-test-ids',
             ]);
     });
 });

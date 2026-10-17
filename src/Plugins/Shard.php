@@ -272,7 +272,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
     {
         $filtered = $this->removeParallelArguments($arguments);
 
-        return [PHP_BINARY, ...$filtered, '--test-directory='.$testPath, '--list-test-ids'];
+        return [PHP_BINARY, ...$filtered, '--test-directory='.$testPath, '--no-tia', '--list-test-ids'];
     }
 
     /** @return list<string> */
