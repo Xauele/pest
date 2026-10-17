@@ -462,23 +462,16 @@ final readonly class ChangedFiles
     private function isUntrackedSourceCandidate(string $path): bool
     {
         $normalised = str_replace('\\', '/', $path);
-        $basename = basename($normalised);
 
-        if (in_array($basename, ['.pest.xml', 'junit.xml', 'junit-output.xml', 'coverage.xml', 'coverage-report.xml'], true)) {
+        if ($normalised === '.pest.xml') {
             return false;
         }
 
-        foreach (['app/', 'src/', 'lib/', 'tests/', 'tests-external/', 'config/', 'routes/', 'database/', 'bootstrap/', 'resources/', 'public/', 'modules/', 'packages/', 'lang/', 'views/'] as $prefix) {
-            if (str_starts_with($normalised, $prefix)) {
-                return true;
-            }
+        if (array_any(['.pest/', 'coverage/'], fn (string $prefix): bool => str_starts_with($normalised, $prefix))) {
+            return false;
         }
 
-        if (in_array($basename, ['composer.json', 'composer.lock', 'phpunit.xml', 'phpunit.xml.dist', 'pest.php', 'package.json', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'], true)) {
-            return true;
-        }
-
-        return array_any(['.php', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.mjs', '.cjs', '.mts', '.blade.php', '.sql', '.twig', '.scss', '.css'], fn (string $suffix): bool => str_ends_with($basename, $suffix));
+        return preg_match('/^(?:junit|clover|coverage|test[-_]?results)(?:[._-][^/]*)?\.(?:xml|json|log)$/i', $normalised) !== 1;
     }
 
     public function currentSha(): ?string

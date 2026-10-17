@@ -437,3 +437,19 @@ test('a dirty Git submodule safely falls back to a full suite', function (): voi
         rmdir($external);
     }
 })->skipOnWindows();
+
+test('an uncompleted graph publication cannot be replayed as certified', function (): void {
+    $project = Project::make('master');
+    $project->seed('master');
+
+    $state = new \Pest\Plugins\Tia\FileState($project->graphDir());
+    expect($state->write(Tia::KEY_RUN_PENDING, '{"pending":true}'))->toBeTrue();
+
+    $result = $project->pest('--tia');
+
+    expect($result->exitCode)->toBe(0, $result->describe())
+        ->and($result->output)->toContain('earlier TIA run was not certified')
+        ->and($result->replayed())->toBe(0)
+        ->and($state->exists(Tia::KEY_RUN_PENDING))->toBeFalse();
+})->skipOnWindows()->skip(! Coverage::isAvailable(), 'Coverage is not available');
+

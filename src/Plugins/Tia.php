@@ -87,6 +87,8 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
 
     private const string KEY_WORKER_NO_DRIVER_PREFIX = 'worker-no-driver-';
 
+    public const string KEY_RUN_PENDING = 'run-pending.json';
+
     public const string KEY_COVERAGE_CACHE = 'coverage.bin.gz';
 
     public const string KEY_COVERAGE_MARKER = 'coverage.marker';
@@ -746,9 +748,16 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
             return $exitCode;
         }
 
+        if (! $this->state->write(self::KEY_RUN_PENDING, '{"pending":true}')) {
+            $this->renderBadge('WARN', 'Could not prepare safe TIA publication — graph not updated.');
+
+            return $exitCode;
+        }
+
         $previous = $this->state->read(self::KEY_GRAPH);
 
         if (! $this->state->write(self::KEY_GRAPH, $this->stagedGraphJson)) {
+            $this->state->delete(self::KEY_RUN_PENDING);
             $this->renderBadge('WARN', 'Could not persist the final TIA graph — test results are unaffected.');
 
             return $exitCode;
@@ -769,11 +778,21 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
             $this->stagedGraphJson = null;
             $this->stagedGraph = null;
 
+            if ($restored) {
+                $this->state->delete(self::KEY_RUN_PENDING);
+            }
+
             return $exitCode === 0 ? 1 : $exitCode;
         }
 
         $this->stagedGraphJson = null;
         $this->stagedGraph = null;
+
+        if (! $this->state->delete(self::KEY_RUN_PENDING)) {
+            $this->renderBadge('ERROR', 'Could not finish TIA certification.');
+
+            return 1;
+        }
 
         return $exitCode;
     }
@@ -977,6 +996,18 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
             return $arguments;
         }
 
+        if ($this->state->exists(self::KEY_RUN_PENDING)) {
+            $this->renderBadge('WARN', 'An earlier TIA run was not certified — rebuilding the graph.');
+
+            if (! $this->canRebuildGraph()) {
+                $this->writesSuppressed = true;
+
+                return $arguments;
+            }
+
+            $forceRebuild = true;
+        }
+
         $fingerprint = Fingerprint::compute($projectRoot);
         $this->startFingerprint = $fingerprint;
 
@@ -1045,6 +1076,7 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
     {
         foreach ([
             self::KEY_GRAPH,
+            self::KEY_RUN_PENDING,
             self::KEY_AFFECTED,
             self::KEY_COVERAGE_CACHE,
             self::KEY_COVERAGE_MARKER,
