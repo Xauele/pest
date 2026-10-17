@@ -365,7 +365,7 @@ OUT;
         $method = $reflection->getMethod('parseListTestIdsOutput');
 
         expect($method->invoke($shard, ''))->toBeEmpty()
-            ->and($method->invoke($shard, "\\r\\n"))->toBeEmpty();
+            ->and($method->invoke($shard, chr(13).chr(10)))->toBeEmpty();
     });
 
     it('parses non-Tests namespaced classes', function (): void {

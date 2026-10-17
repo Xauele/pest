@@ -274,13 +274,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         return [PHP_BINARY, ...$filtered, '--test-directory='.$testPath, '--list-test-ids'];
     }
 
-    /**
-     * PHPUnit's --list-test-ids prints canonical TestMethod::id() values
-     * after native test selection. A class is only assigned together with
-     * every discovered method/dataset ID in that class.
-     *
-     * @return list<string>
-     */
+    /** @return list<string> */
     private function parseListTestIdsOutput(string $output): array
     {
         $this->discoveredTestIds = [];
@@ -290,7 +284,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             throw new InvalidOption('Shard discovery output cannot be decoded.');
         }
 
-        $plainOutput = rtrim($plainOutput, "\\r\\n");
+        $plainOutput = rtrim($plainOutput, chr(13).chr(10));
 
         if ($plainOutput === '') {
             return [];
@@ -298,8 +292,8 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
         $originalClasses = [];
 
-        foreach (explode("\\n", $plainOutput) as $entry) {
-            $entry = rtrim($entry, "\\r");
+        foreach (explode(chr(10), $plainOutput) as $entry) {
+            $entry = rtrim($entry, chr(13));
 
             if (preg_match('/^((?:P\\\\)?[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*(?:\\\\[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*)*)::(.+)$/uD', $entry, $matches) !== 1) {
                 throw new InvalidOption('An unrecognised test ID was found in [--list-test-ids]. Refusing incomplete shard discovery.');
