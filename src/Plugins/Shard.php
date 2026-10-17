@@ -291,7 +291,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             $plainOutput = substr($plainOutput, strlen($versionHeader));
         }
 
-        $plainOutput = rtrim($plainOutput, chr(13).chr(10));
+        $plainOutput = trim($plainOutput, chr(13).chr(10));
 
         if ($plainOutput === '') {
             return [];

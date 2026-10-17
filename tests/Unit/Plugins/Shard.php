@@ -417,6 +417,15 @@ OUT;
         ]);
     });
 
+    it('ignores framing blank lines around a native PHPUnit ID inventory', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+        $header = Version::getVersionString().PHP_EOL.PHP_EOL;
+
+        expect($method->invoke($shard, $header.PHP_EOL.'P\\Acme\\RealTest::method'.PHP_EOL.PHP_EOL))
+            ->toBe(['Acme\\RealTest']);
+    })->group('integration');
+
     it('accepts the exact native PHPUnit CLI version header without treating it as a test', function (): void {
         $shard = new Shard(new BufferedOutput);
         $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
