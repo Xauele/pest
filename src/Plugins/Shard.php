@@ -284,6 +284,12 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             throw new InvalidOption('Shard discovery output cannot be decoded.');
         }
 
+        $versionHeader = \PHPUnit\Runner\Version::getVersionString().PHP_EOL.PHP_EOL;
+
+        if (str_starts_with($plainOutput, $versionHeader)) {
+            $plainOutput = substr($plainOutput, strlen($versionHeader));
+        }
+
         $plainOutput = rtrim($plainOutput, chr(13).chr(10));
 
         if ($plainOutput === '') {

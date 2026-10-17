@@ -416,6 +416,14 @@ OUT;
         ]);
     });
 
+    it('accepts the exact native PHPUnit CLI version header without treating it as a test', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+        $header = \PHPUnit\Runner\Version::getVersionString().PHP_EOL.PHP_EOL;
+
+        expect($method->invoke($shard, $header.'P\\Acme\\RealTest::method'))->toBe(['Acme\\RealTest']);
+    })->group('integration');
+
     it('rejects injected diagnostics mixed with native test IDs', function (): void {
         $shard = new Shard(new BufferedOutput);
         $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
