@@ -6,6 +6,7 @@ namespace Pest\Plugins;
 
 use ParaTest\ParaTestCommand;
 use Pest\Contracts\Plugins\HandlesArguments;
+use Pest\Kernel;
 use Pest\Plugins\Actions\CallsAddsOutput;
 use Pest\Plugins\Actions\CallsFinalizesOutput;
 use Pest\Plugins\Concerns\HandleArguments;
@@ -13,7 +14,6 @@ use Pest\Plugins\Parallel\Contracts\HandlersWorkerArguments;
 use Pest\Plugins\Parallel\Paratest\CleanConsoleOutput;
 use Pest\Support\Arr;
 use Pest\Support\Container;
-use Pest\Kernel;
 use Pest\TestSuite;
 use Stringable;
 use Symfony\Component\Console\Application;

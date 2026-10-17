@@ -705,7 +705,6 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
 
     public function addOutput(int $exitCode): int
     {
-        // Keep final graph mutations private until all the kernel's terminators finish.
         $this->stageGraphWrites = ! Parallel::isWorker() && $this->startRunSnapshot !== null;
         $exitCode = $this->addOutputBeforeTermination($exitCode);
 
@@ -747,8 +746,10 @@ final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, Handle
             return $exitCode === 0 ? 1 : $exitCode;
         }
 
-        // A write can itself coincide with a source edit. Undo the publication.
-        if ($this->runTreeChangedDuringExecution()) {
+        $publishedSnapshot = new ChangedFiles($this->snapshotRoot ?? TestSuite::getInstance()->rootPath)->runSnapshot();
+
+        if ($publishedSnapshot !== $this->startRunSnapshot) {
+            $this->runTreeChangedDuringExecution();
             $restored = $previous === null
                 ? $this->state->delete(self::KEY_GRAPH)
                 : $this->state->write(self::KEY_GRAPH, $previous);

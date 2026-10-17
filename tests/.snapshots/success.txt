@@ -1871,7 +1871,7 @@
   ✓ PHP files → it ignores single-line comments
   ✓ PHP files → it ignores hash-style comments
   ✓ PHP files → it ignores multi-line comments
-  ✓ PHP files → it ignores doc comments
+  ✓ PHP files → it detects doc comments because PHP reflection can observe them
   ✓ PHP files → it detects code changes
   ✓ PHP files → it preserves whitespace inside string literals
   ✓ PHP files → it treats variable renames as a change

@@ -459,10 +459,6 @@ final readonly class ChangedFiles
         return $files;
     }
 
-    /**
-     * Only untracked source and configuration files are part of the run-integrity
-     * snapshot. Tracked files are always included, regardless of extension.
-     */
     private function isUntrackedSourceCandidate(string $path): bool
     {
         $normalised = str_replace('\\', '/', $path);
