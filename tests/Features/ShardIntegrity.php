@@ -115,3 +115,26 @@ it('rejects a missing dataset row in a green PHPUnit class, serial and parallel'
     expect($exit)->toBe(1, $output)
         ->and($output)->toContain('Shard integrity failed: 1 missing and 0 unexpected test IDs');
 })->with([false, true])->group('integration');
+
+it('attests every PHPUnit dataset row, not merely its class', function (bool $parallel): void {
+    [$exit, $output] = runShardIntegrityFixture('ShardIntegrityFullDataset.xml', '1/1', $parallel);
+
+    expect($exit)->toBe(0, $output)
+        ->and($output)->toContain('2 passed')
+        ->and($output)->not->toContain('Shard integrity failed');
+})->with([false, true])->group('integration');
+
+it('attests every generated Pest dataset row, not merely its class', function (bool $parallel): void {
+    [$exit, $output] = runShardIntegrityFixture('ShardIntegrityPestFullDataset.xml', '1/1', $parallel);
+
+    expect($exit)->toBe(0, $output)
+        ->and($output)->toContain('2 passed')
+        ->and($output)->not->toContain('Shard integrity failed');
+})->with([false, true])->group('integration');
+
+it('rejects a missing Pest dataset row after discovery', function (bool $parallel): void {
+    [$exit, $output] = runShardIntegrityFixture('ShardIntegrityPestLostDataset.xml', '1/1', $parallel);
+
+    expect($exit)->toBe(1, $output)
+        ->and($output)->toContain('Shard integrity failed: 1 missing and 0 unexpected test IDs');
+})->with([false, true])->group('integration');
