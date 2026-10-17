@@ -268,3 +268,121 @@ test('an untracked JUnit report written during tests does not count as source dr
         ->and($result->output)->not->toContain('Project sources changed during the run')
         ->and($project->path('junit-output.xml'))->toBeFile();
 })->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
+
+
+test('a later Terminable plugin cannot approve a tree it changes after TIA output', function (array $arguments): void {
+    $project = Project::make('master');
+    $project->seed('master');
+
+    $project->write('vendor/pestphp/pest/src/Plugins/LateSourceMutation.php', <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        namespace Pest\Plugins;
+
+        use Pest\Contracts\Plugins\Terminable;
+        use Pest\TestSuite;
+
+        final class LateSourceMutation implements Terminable
+        {
+            public function terminate(): void
+            {
+                if (Parallel::isWorker() || getenv('PEST_LATE_SOURCE_MUTATION') !== '1') {
+                    return;
+                }
+
+                $source = TestSuite::getInstance()->rootPath.'/app/Greeter.php';
+                $contents = (string) file_get_contents($source);
+
+                if (! str_contains($contents, 'function changedByLaterPlugin')) {
+                    file_put_contents($source, str_replace(
+                        '    public function greet',
+                        "    public function changedByLaterPlugin(): int { return 9; }\n\n    public function greet",
+                        $contents,
+                    ));
+                }
+            }
+        }
+        PHP);
+
+    $pluginsFile = $project->path('vendor/pest-plugins.json');
+    $plugins = json_decode((string) file_get_contents($pluginsFile), true);
+    expect($plugins)->toBeArray()->toContain('Pest\\Plugins\\Tia');
+
+    unlink($pluginsFile);
+    $project->write('vendor/pest-plugins.json', (string) json_encode([...$plugins, 'Pest\\Plugins\\LateSourceMutation']));
+
+    $previous = $project->graph();
+    $result = $project->pestWithEnvironment($project->path(), ['PEST_LATE_SOURCE_MUTATION' => '1'], '--tia', ...$arguments);
+
+    expect($result->tally())->toContain('6 passed')
+        ->and($result->exitCode)->toBe(1, $result->describe())
+        ->and($result->output)->toContain('Project sources changed during the run')
+        ->and($project->graph())->toEqual($previous);
+
+    $next = $project->pest('--tia', ...$arguments);
+    expect($next->exitCode)->toBe(0, $next->describe())
+        ->and($next->replayed())->toBeLessThan(Project::TOTAL_TESTS, $next->describe());
+})->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
+
+test('publication rolls back the graph if its state write mutates a source', function (): void {
+    $project = Project::make('master');
+    $state = new class($project->path('app/Greeter.php')) implements \Pest\Plugins\Tia\Contracts\State
+    {
+        private array $values = [\Pest\Plugins\Tia::KEY_GRAPH => 'previous graph'];
+
+        private bool $mutated = false;
+
+        public function __construct(private string $source) {}
+
+        public function read(string $key): ?string
+        {
+            return $this->values[$key] ?? null;
+        }
+
+        public function write(string $key, string $content): bool
+        {
+            $this->values[$key] = $content;
+
+            if ($key === \Pest\Plugins\Tia::KEY_GRAPH && ! $this->mutated) {
+                $this->mutated = true;
+                $contents = (string) file_get_contents($this->source);
+                file_put_contents($this->source, str_replace('return sprintf(', 'return sprintf(', $contents)."\n// source modified while graph was written\n");
+            }
+
+            return true;
+        }
+
+        public function delete(string $key): bool
+        {
+            unset($this->values[$key]);
+
+            return true;
+        }
+
+        public function exists(string $key): bool
+        {
+            return isset($this->values[$key]);
+        }
+
+        public function keysWithPrefix(string $prefix): array
+        {
+            return array_values(array_filter(array_keys($this->values), fn (string $key): bool => str_starts_with($key, $prefix)));
+        }
+    };
+
+    $start = new ChangedFiles($project->path)->runSnapshot();
+    expect($start)->not->toBeNull();
+
+    $tia = new ReflectionClass(\Pest\Plugins\Tia::class)->newInstanceWithoutConstructor();
+    new ReflectionProperty(\Pest\Plugins\Tia::class, 'state')->setValue($tia, $state);
+    new ReflectionProperty(\Pest\Plugins\Tia::class, 'output')->setValue($tia, new \Symfony\Component\Console\Output\BufferedOutput);
+    new ReflectionProperty(\Pest\Plugins\Tia::class, 'snapshotRoot')->setValue($tia, $project->path);
+    new ReflectionProperty(\Pest\Plugins\Tia::class, 'startRunSnapshot')->setValue($tia, $start);
+    new ReflectionProperty(\Pest\Plugins\Tia::class, 'stageGraphWrites')->setValue($tia, true);
+    new ReflectionProperty(\Pest\Plugins\Tia::class, 'stagedGraphJson')->setValue($tia, 'candidate graph');
+
+    expect($tia->finalizeOutput(0))->toBe(1)
+        ->and($state->read(\Pest\Plugins\Tia::KEY_GRAPH))->toBe('previous graph');
+})->skipOnWindows();
