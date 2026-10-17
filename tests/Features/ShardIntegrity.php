@@ -138,3 +138,24 @@ it('rejects a missing Pest dataset row after discovery', function (bool $paralle
     expect($exit)->toBe(1, $output)
         ->and($output)->toContain('Shard integrity failed: 1 missing and 0 unexpected test IDs');
 })->with([false, true])->group('integration');
+
+it('keeps native PHPUnit test IDs byte-for-byte intact in CLI output', function (): void {
+    $process = new Process(
+        [
+            PHP_BINARY,
+            'bin/pest',
+            '--configuration=tests/Fixtures/Suites/ShardIntegrityPhpUnit.xml',
+            '--list-test-ids',
+        ],
+        dirname(__DIR__, 2),
+        ['COLLISION_PRINTER' => 'DefaultPrinter', 'COLLISION_IGNORE_DURATION' => 'true', 'PAO_DISABLE' => '1'],
+    );
+
+    $process->run();
+    $output = removeAnsiEscapeSequences($process->getOutput().$process->getErrorOutput());
+    $lines = explode(chr(10), trim((string) $output));
+
+    expect($process->getExitCode())->toBe(0, $output)
+        ->and($output)->not->toContain(' INFO ')
+        ->and(end($lines))->toBe('Tests\\Fixtures\\Suites\\ShardIntegrityPhpUnitTest::test_it_passes');
+})->group('integration');
