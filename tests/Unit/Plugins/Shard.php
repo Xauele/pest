@@ -439,7 +439,7 @@ OUT;
         $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
 
         $method->invoke($shard, "P\\Acme\\RealTest::method\nWARN unexpected output");
-    })->throws(InvalidOption::class, 'An unrecognised test ID')->group('integration');
+    })->throws(InvalidOption::class, 'An unrecognised test ID');
 
     it('rejects duplicated method and dataset IDs', function (): void {
         $shard = new Shard(new BufferedOutput);

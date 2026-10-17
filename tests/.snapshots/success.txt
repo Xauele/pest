@@ -1869,7 +1869,7 @@
   ✓ parseListTestIdsOutput → it rejects native and generated class names that collide after normalisation
   ✓ parseListTestIdsOutput → it handles ANSI-styled test discovery without losing class names
   ✓ parseListTestIdsOutput → it parses Unicode PHP class identifiers from native and generated test entries
-  ✓ parseListTestIdsOutput → it returns an empty list for output with no matching lines
+  ✓ parseListTestIdsOutput → it returns an empty list for a genuinely empty inventory
   ✓ parseListTestIdsOutput → it parses non-Tests namespaced classes
   ✓ parseListTestIdsOutput → it parses unnamespaced top-level classes
   ✓ parseListTestIdsOutput → it strips the P\ Pest prefix but keeps the rest of the FQCN
