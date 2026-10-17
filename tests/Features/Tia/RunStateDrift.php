@@ -7,6 +7,7 @@ use Pest\Plugins\Tia\ChangedFiles;
 use Pest\Plugins\Tia\Contracts\State;
 use Pest\Support\Coverage;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Tests\Fixtures\Tia\GitRepo;
 use Tests\Fixtures\Tia\Project;
 
 afterEach(function (): void {
@@ -387,4 +388,41 @@ test('publication rolls back the graph if its state write mutates a source', fun
 
     expect($tia->finalizeOutput(0))->toBe(1)
         ->and($state->read(Tia::KEY_GRAPH))->toBe('previous graph');
+})->skipOnWindows();
+
+test('a dirty Git submodule safely falls back to a full suite', function (): void {
+    $project = Project::make('master');
+    $external = sys_get_temp_dir().'/pest-tia-gitlink-'.bin2hex(random_bytes(8));
+    mkdir($external, 0755, true);
+
+    try {
+        file_put_contents($external.'/Service.php', "<?php\nclass Service {}\n");
+        $submodule = new GitRepo($external);
+        $submodule->init('main');
+        $project->git()->run(['-c', 'protocol.file.allow=always', 'submodule', 'add', $external, 'vendor-module']);
+        $project->git()->commit('add a tracked gitlink');
+        $project->seed('master');
+
+        $project->write('vendor-module/Service.php', "<?php\nclass Service { public function newer(): bool { return true; } }\n");
+
+        expect(new ChangedFiles($project->path)->runSnapshot())->toBeNull();
+
+        $result = $project->pest('--tia');
+
+        expect($result->exitCode)->toBe(0, $result->describe())
+            ->and($result->output)->toContain('Unable to snapshot project sources')
+            ->and($result->tally())->toContain('6 passed')
+            ->and($result->replayed())->toBe(0, $result->describe());
+    } finally {
+        $paths = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($external, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+
+        foreach ($paths as $file) {
+            $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+        }
+
+        rmdir($external);
+    }
 })->skipOnWindows();
