@@ -395,7 +395,7 @@ OUT;
         $reflection = new ReflectionClass($shard);
         $method = $reflection->getMethod('parseListTestIdsOutput');
 
-        expect($method->invoke($shard, ' - P\FooTest::test_bar'))->toBe(['FooTest']);
+        expect($method->invoke($shard, 'P\FooTest::test_bar'))->toBe(['FooTest']);
     });
 
     it('strips the P\\ Pest prefix but keeps the rest of the FQCN', function (): void {
@@ -448,7 +448,7 @@ OUT;
 });
 
 describe('buildListTestIdsCommand', function (): void {
-    it('builds the list-tests command with the forwarded --test-directory', function (): void {
+    it('builds the list-test-ids command with the forwarded --test-directory', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
@@ -466,7 +466,7 @@ describe('buildListTestIdsCommand', function (): void {
         ]);
     });
 
-    it('strips --parallel and -p when building the list-tests command', function (): void {
+    it('strips --parallel and -p when building the list-test-ids command', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
@@ -496,7 +496,7 @@ describe('buildListTestIdsCommand', function (): void {
         expect($command)->toContain('--test-directory=suites');
     });
 
-    it('strips --processes=N when building the list-tests command', function (): void {
+    it('strips --processes=N when building the list-test-ids command', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
@@ -514,7 +514,7 @@ describe('buildListTestIdsCommand', function (): void {
         ]);
     });
 
-    it('strips --processes N (space-separated) when building the list-tests command', function (): void {
+    it('strips --processes N (space-separated) when building the list-test-ids command', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
