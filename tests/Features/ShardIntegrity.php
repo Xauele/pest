@@ -108,3 +108,10 @@ it('does not run classes from a different parent namespace across serial and par
             ->and($output)->not->toContain('Shard integrity failed');
     }
 })->with([false, true])->group('integration');
+
+it('rejects a missing dataset row in a green PHPUnit class, serial and parallel', function (bool $parallel): void {
+    [$exit, $output] = runShardIntegrityFixture('ShardIntegrityLostDataset.xml', '1/1', $parallel);
+
+    expect($exit)->toBe(1, $output)
+        ->and($output)->toContain('Shard integrity failed: 1 missing and 0 unexpected test IDs');
+})->with([false, true])->group('integration');
