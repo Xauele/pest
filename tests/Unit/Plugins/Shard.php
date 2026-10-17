@@ -60,7 +60,7 @@ describe('buildFilterArgument', function (): void {
 
         $filter = $method->invoke($shard, ['Tests\\Unit\\ExampleTest']);
 
-        expect($filter)->toBe('Tests\\\\Unit\\\\ExampleTest(?=::)');
+        expect($filter)->toBe('Tests\\\\Unit\\\\ExampleTest::');
     });
 
     it('generates compact filter for multiple tests with common prefix', function (): void {
@@ -75,7 +75,7 @@ describe('buildFilterArgument', function (): void {
             'Tests\\Unit\\Foo\\BazTest',
         ]);
 
-        expect($filter)->toBe('Tests\\\\Unit\\\\Foo\\\\(BarTest(?=::)|BazTest(?=::))');
+        expect($filter)->toBe('Tests\\\\Unit\\\\Foo\\\\(BarTest::|BazTest::)');
     });
 
     it('generates compact filter for tests with different namespaces', function (): void {
@@ -90,7 +90,7 @@ describe('buildFilterArgument', function (): void {
             'Tests\\Feature\\BarTest',
         ]);
 
-        expect($filter)->toBe('Tests\\\\(Unit\\\\FooTest(?=::)|Feature\\\\BarTest(?=::))');
+        expect($filter)->toBe('Tests\\\\(Unit\\\\FooTest::|Feature\\\\BarTest::)');
     });
 
     it('returns empty string for empty test list', function (): void {
@@ -118,7 +118,7 @@ describe('buildFilterArgument', function (): void {
             'Tests\\Unit\\Plugins\\Concerns\\Baz',
         ]);
 
-        expect($filter)->toBe('Tests\\\\Unit\\\\Plugins\\\\Concerns\\\\(Foo(?=::)|Bar(?=::)|Baz(?=::))');
+        expect($filter)->toBe('Tests\\\\Unit\\\\Plugins\\\\Concerns\\\\(Foo::|Bar::|Baz::)');
     });
 
     it('handles mix of nested and flat namespaces', function (): void {
@@ -138,7 +138,7 @@ describe('buildFilterArgument', function (): void {
         $filter = $method->invoke($shard, $tests);
 
         expect($filter)
-            ->toBe(addslashes('Tests\\Unit\\(SimpleTest(?=::)|Plugins\\Concerns\\(HandleArguments(?=::)|Validation(?=::))|Another\\Deep\\Nested\\Test(?=::))'));
+            ->toBe(addslashes('Tests\\Unit\\(SimpleTest::|Plugins\\Concerns\\(HandleArguments::|Validation::)|Another\\Deep\\Nested\\Test::)'));
     });
 
     it('does not match a class outside of the shard when another class name is its prefix', function (): void {
@@ -175,7 +175,7 @@ describe('buildFilterArgument', function (): void {
 
         $filter = $method->invoke($shard, ['Tests\\Unit\\After', 'Tests\\Unit\\After\\AfterAll']);
 
-        expect($filter)->toBe('Tests\\\\Unit\\\\(?:After(?=::)|After\\\\AfterAll(?=::))')
+        expect($filter)->toBe('Tests\\\\Unit\\\\(?:After::|After\\\\AfterAll::)')
             ->and('P\Tests\Unit\After::x')->toMatch('{'.$filter.'}i')
             ->and('P\Tests\Unit\After\AfterAll::y')->toMatch('{'.$filter.'}i');
     });
@@ -315,6 +315,48 @@ OUT;
 OUT;
 
         expect($method->invoke($shard, $listOutput))->toBe(['Tests\\Same']);
+    });
+
+    it('rejects unknown test entries instead of silently certifying a partial inventory', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestsOutput');
+
+        $method->invoke($shard, <<<'OUT'
+ - P\Tests\Example::test_first
+ - ?invalid-test-entry
+OUT);
+    })->throws(InvalidOption::class, 'An unrecognised test entry');
+
+    it('rejects native and generated class names that collide after normalisation', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestsOutput');
+
+        $method->invoke($shard, <<<'OUT'
+ - P\Acme\Example::test_one
+ - Acme\Example::test_two
+OUT);
+    })->throws(InvalidOption::class, 'cannot distinguish');
+
+    it('handles ANSI-styled test discovery without losing class names', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestsOutput');
+
+        expect($method->invoke($shard, "\x1b[32m - P\\Acme\\Example::test_one\x1b[0m\n"))->toBe(['Acme\\Example']);
+    });
+
+    it('parses Unicode PHP class identifiers from native and generated test entries', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestsOutput');
+
+        $listOutput = <<<'OUT'
+ - P\Acme\ŚlimakTest::test_one
+ - Acme\ŻółwTest::test_two
+OUT;
+
+        expect($method->invoke($shard, $listOutput))->toBe([
+            'Acme\\ŚlimakTest',
+            'Acme\\ŻółwTest',
+        ]);
     });
 
     it('returns an empty list for output with no matching lines', function (): void {
@@ -473,7 +515,13 @@ describe('buildListTestsCommand', function (): void {
 
         expect($command)->not->toContain('--processes')
             ->and($command)->toContain('--update-shards')
-            ->and($command)->toContain('--test-directory=tests');
+            ->and($command)->toBe([
+                PHP_BINARY,
+                'bin/pest',
+                '--update-shards',
+                '--test-directory=tests',
+                '--list-tests',
+            ]);
     });
 });
 

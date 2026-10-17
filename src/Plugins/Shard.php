@@ -8,6 +8,9 @@ use Pest\Contracts\Plugins\AddsOutput;
 use Pest\Contracts\Plugins\HandlesArguments;
 use Pest\Contracts\Plugins\Terminable;
 use Pest\Exceptions\InvalidOption;
+use Pest\Plugins\Shard\RunIntegrity;
+use Pest\Subscribers\EnsureShardTestIsPrepared;
+use Pest\Subscribers\EnsureShardTestIsSkipped;
 use Pest\Subscribers\EnsureShardTimingFinished;
 use Pest\Subscribers\EnsureShardTimingsAreCollected;
 use Pest\Subscribers\EnsureShardTimingStarted;
@@ -31,6 +34,8 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
     private const string CLASS_END = "\0";
 
+    private const string INTEGRITY_GLOBAL = 'SHARD_INTEGRITY_RUN_ID';
+
     /**
      * @var array{
      *     index: int,
@@ -48,6 +53,11 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
     private static bool $shardsOutdated = false;
 
     private static bool $passed = false;
+
+    /** @var array<string, true>|null */
+    private static ?array $expectedClasses = null;
+
+    private static ?string $integrityRunId = null;
 
     /**
      * @var array<string, float>|null
@@ -70,6 +80,15 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      */
     public function handleArguments(array $arguments): array
     {
+        if (Parallel::isWorker()) {
+            $runId = Parallel::getGlobal(self::INTEGRITY_GLOBAL);
+
+            if (is_string($runId)) {
+                self::$integrityRunId = $runId;
+                $this->registerIntegritySubscribers();
+            }
+        }
+
         if ($this->hasArgument('--update-shards', $arguments)) {
             return $this->handleUpdateShards($arguments);
         }
@@ -100,6 +119,10 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         /** @phpstan-ignore-next-line */
         $tests = $this->allTests($arguments);
 
+        if ($tests === []) {
+            throw new InvalidOption('No test classes were discovered for sharding. Check [--list-tests] before running CI shards.');
+        }
+
         $timings = $this->loadShardsFile();
         if ($timings !== null) {
             $knownTests = array_values(array_filter($tests, fn (string $test): bool => isset($timings[$test])));
@@ -126,11 +149,21 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             'testsCount' => count($tests),
         ];
 
-        if ($testsToRun === []) {
-            return $arguments;
+        if (! $this->hasArgument('--list-tests', $arguments)
+            && ! $this->hasArgument('--list-tests-xml', $arguments)
+            && ! $this->hasArgument('--list-groups', $arguments)
+            && ! $this->hasArgument('--list-suites', $arguments)
+            && ! $this->hasArgument('--dry-run', $arguments)) {
+            self::$expectedClasses = array_fill_keys($testsToRun, true);
+            $this->registerIntegritySubscribers();
+
+            if (Parallel::isEnabled()) {
+                self::$integrityRunId = bin2hex(random_bytes(16));
+                Parallel::setGlobal(self::INTEGRITY_GLOBAL, self::$integrityRunId);
+            }
         }
 
-        $filter = $this->buildFilterArgument($testsToRun);
+        $filter = $testsToRun === [] ? '(?!)' : sprintf('^(?:P\\\\)?(?:%s)', $this->buildFilterArgument($testsToRun));
 
         $this->ensureFilterLengthIsSafe($filter);
 
@@ -193,11 +226,30 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      */
     private function removeParallelArguments(array $arguments): array
     {
-        return array_values(array_filter(
-            $arguments,
-            fn (string $argument): bool => ! in_array($argument, ['--parallel', '-p'], strict: true)
-                && ! str_starts_with($argument, '--processes'),
-        ));
+        $filtered = [];
+        $skipProcessesValue = false;
+
+        foreach ($arguments as $argument) {
+            if ($skipProcessesValue) {
+                $skipProcessesValue = false;
+
+                continue;
+            }
+
+            if ($argument === '--processes') {
+                $skipProcessesValue = true;
+
+                continue;
+            }
+
+            if (in_array($argument, ['--parallel', '-p'], true) || str_starts_with($argument, '--processes=')) {
+                continue;
+            }
+
+            $filtered[] = $argument;
+        }
+
+        return $filtered;
     }
 
     /**
@@ -216,9 +268,34 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      */
     private function parseListTestsOutput(string $output): array
     {
-        preg_match_all('/ - (?:P\\\\)?([A-Za-z_]\w*(?:\\\\[A-Za-z_]\w*)*)::/', $output, $matches);
+        $plainOutput = preg_replace('/\x1B\[[0-9;]*m/', '', $output) ?? $output;
 
-        return array_values(array_unique($matches[1]));
+        preg_match_all('/^[ \t]*-[ \t]+([^\r\n]+)$/m', $plainOutput, $entries);
+
+        $classes = [];
+        $originalClasses = [];
+
+        foreach ($entries[1] as $entry) {
+            if (! preg_match('/^((?:P\\\\)?[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*(?:\\\\[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*)*)::/u', $entry, $matches)) {
+                throw new InvalidOption('An unrecognised test entry was found in [--list-tests]. Refusing incomplete shard discovery.');
+            }
+
+            $originalClass = $matches[1];
+            $class = str_starts_with($originalClass, 'P\\') ? substr($originalClass, 2) : $originalClass;
+
+            if (isset($originalClasses[$class]) && $originalClasses[$class] !== $originalClass) {
+                throw new InvalidOption(sprintf(
+                    'Sharding cannot distinguish [%s] from [%s] after class normalisation.',
+                    $originalClasses[$class],
+                    $originalClass,
+                ));
+            }
+
+            $classes[$class] = true;
+            $originalClasses[$class] = $originalClass;
+        }
+
+        return array_keys($classes);
     }
 
     /**
@@ -262,12 +339,12 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
                 }
 
                 if ($endsWithClass && $subRegex !== '') {
-                    $parts[] = '(?:'.preg_quote($key, '/').'(?=::)|'.$segment.')';
+                    $parts[] = '(?:'.preg_quote($key, '/').'::|'.$segment.')';
 
                     continue;
                 }
 
-                $parts[] = $endsWithClass ? $segment.'(?=::)' : $segment;
+                $parts[] = $endsWithClass ? $segment.'::' : $segment;
             }
 
             return implode('|', $parts);
@@ -296,6 +373,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
     public function addOutput(int $exitCode): int
     {
+        $exitCode = $this->verifyShardIntegrity($exitCode);
         self::$passed = $exitCode === 0;
 
         if (self::$updateShards && self::$passed && ! Parallel::isWorker()) {
@@ -342,6 +420,10 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
     public function terminate(): void
     {
+        if (Parallel::isWorker() && self::$integrityRunId !== null) {
+            RunIntegrity::writeWorkerEvidence(self::$integrityRunId);
+        }
+
         if (! self::$updateShards) {
             return;
         }
@@ -363,6 +445,63 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         }
 
         $this->writeTimings($timings);
+    }
+
+    private function registerIntegritySubscribers(): void
+    {
+        RunIntegrity::activate();
+
+        Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsPrepared);
+        Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsSkipped);
+    }
+
+    private function verifyShardIntegrity(int $exitCode): int
+    {
+        if (self::$expectedClasses === null) {
+            return $exitCode;
+        }
+
+        $observed = RunIntegrity::observed();
+
+        if (self::$integrityRunId !== null) {
+            $workers = RunIntegrity::collectWorkerEvidence(self::$integrityRunId);
+
+            if ($workers === null) {
+                if ($exitCode === 0) {
+                    $this->output->writeln('  <fg=red;options=bold>ERROR</> Shard integrity evidence is unreadable or corrupt.');
+
+                    return 1;
+                }
+
+                return $exitCode;
+            }
+
+            $observed += $workers;
+        }
+
+        if ($exitCode !== 0) {
+            return $exitCode;
+        }
+
+        ['missing' => $missing, 'unexpected' => $unexpected] = RunIntegrity::difference(self::$expectedClasses, $observed);
+
+        if ($missing === [] && $unexpected === []) {
+            return $exitCode;
+        }
+
+        $this->output->writeln(sprintf(
+            '  <fg=red;options=bold>ERROR</> Shard integrity failed: %d missing and %d unexpected test classes.',
+            count($missing),
+            count($unexpected),
+        ));
+
+        foreach (['missing' => $missing, 'unexpected' => $unexpected] as $kind => $classes) {
+            if ($classes !== []) {
+                $this->output->writeln(sprintf('  <fg=gray>%s:</> %s', ucfirst($kind), implode(', ', array_slice($classes, 0, 5))));
+            }
+        }
+
+        return 1;
     }
 
     /**

@@ -1548,6 +1548,21 @@
   ✓ it can reference a specific class
   ✓ it can reference a specific class method
 
+   PASS  Tests\Features\ShardIntegrity
+  ✓ it does not execute the whole suite when a shard has no assigned classes with (false)
+  ✓ it does not execute the whole suite when a shard has no assigned classes with (true)
+  ✓ it accounts for every class across non-parallel shards, including PHPUnit classes
+  ✓ it accounts for all selected Pest classes in parallel shards
+  ✓ it cannot silently certify a lost PHPUnit class with parallel sharding
+  ✓ it dispatches every class in mixed Pest and PHPUnit suites across parallel shards
+  ✓ it accepts space-separated parallel worker counts during discovery
+  ✓ it attests intentionally skipped PHPUnit classes in serial and parallel mode with (false)
+  ✓ it attests intentionally skipped PHPUnit classes in serial and parallel mode with (true)
+  ✓ it dispatches Unicode PHPUnit classes in serial and parallel shards with (false)
+  ✓ it dispatches Unicode PHPUnit classes in serial and parallel shards with (true)
+  ✓ it does not run classes from a different parent namespace across serial and parallel shards with (false)
+  ✓ it does not run classes from a different parent namespace across serial and parallel shards with (true)
+
    WARN  Tests\Features\Skip
   ✓ it do not skips
   - it skips with truthy → 1
@@ -1850,6 +1865,10 @@
   ✓ handleArguments → it removes parallel arguments from test discovery
   ✓ parseListTestsOutput → it parses Tests\ namespaced classes from --list-tests output
   ✓ parseListTestsOutput → it deduplicates repeated class names from multiple test methods
+  ✓ parseListTestsOutput → it rejects unknown test entries instead of silently certifying a partial inventory
+  ✓ parseListTestsOutput → it rejects native and generated class names that collide after normalisation
+  ✓ parseListTestsOutput → it handles ANSI-styled test discovery without losing class names
+  ✓ parseListTestsOutput → it parses Unicode PHP class identifiers from native and generated test entries
   ✓ parseListTestsOutput → it returns an empty list for output with no matching lines
   ✓ parseListTestsOutput → it parses non-Tests namespaced classes
   ✓ parseListTestsOutput → it parses unnamespaced top-level classes
@@ -1863,6 +1882,13 @@
   ✓ addOutput → it displays shard information after test execution
   ✓ addOutput → it uses singular form for single test file
   ✓ addOutput → it returns original exit code when shard is not set
+
+   PASS  Tests\Unit\Plugins\Shard\RunIntegrity
+  ✓ it records only active runs and normalises generated Pest class names
+  ✓ it detects missing and unexpected classes without relying on assertion counts
+  ✓ it aggregates parallel worker evidence without duplicate classes
+  ✓ it fails closed on corrupted worker evidence
+  ✓ it fails a green run if an assigned class never executed
 
    PASS  Tests\Unit\Plugins\Tia\ContentHash
   ✓ of() → it returns false when file does not exist
@@ -2263,4 +2289,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1604 passed (3502 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1626 passed (3581 assertions)
