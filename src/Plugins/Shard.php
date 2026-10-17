@@ -55,7 +55,10 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
     private static bool $passed = false;
 
     /** @var array<string, true>|null */
-    private static ?array $expectedClasses = null;
+    private static ?array $expectedTestIds = null;
+
+    /** @var array<string, array<string, true>> */
+    private array $discoveredTestIds = [];
 
     private static ?string $integrityRunId = null;
 
@@ -154,7 +157,15 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             && ! $this->hasArgument('--list-groups', $arguments)
             && ! $this->hasArgument('--list-suites', $arguments)
             && ! $this->hasArgument('--dry-run', $arguments)) {
-            self::$expectedClasses = array_fill_keys($testsToRun, true);
+            $expected = [];
+
+            foreach ($testsToRun as $testClass) {
+                foreach (array_keys($this->discoveredTestIds[$testClass] ?? []) as $testId) {
+                    $expected[$testId] = true;
+                }
+            }
+
+            self::$expectedTestIds = $expected;
             $this->registerIntegritySubscribers();
 
             if (Parallel::isEnabled()) {
@@ -210,14 +221,14 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      */
     private function allTests(array $arguments): array
     {
-        $command = $this->buildListTestsCommand(
+        $command = $this->buildListTestIdsCommand(
             $arguments,
             TestSuite::getInstance()->testPath,
         );
 
         $output = new Process($command)->setTimeout(120)->mustRun()->getOutput();
 
-        return $this->parseListTestsOutput($output);
+        return $this->parseListTestIdsOutput($output);
     }
 
     /**
@@ -256,32 +267,46 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      * @param  list<string>  $arguments
      * @return list<string>
      */
-    private function buildListTestsCommand(array $arguments, string $testPath): array
+    private function buildListTestIdsCommand(array $arguments, string $testPath): array
     {
         $filtered = $this->removeParallelArguments($arguments);
 
-        return [PHP_BINARY, ...$filtered, '--test-directory='.$testPath, '--list-tests'];
+        return [PHP_BINARY, ...$filtered, '--test-directory='.$testPath, '--list-test-ids'];
     }
 
     /**
+     * PHPUnit's --list-test-ids prints canonical TestMethod::id() values
+     * after native test selection. A class is only assigned together with
+     * every discovered method/dataset ID in that class.
+     *
      * @return list<string>
      */
-    private function parseListTestsOutput(string $output): array
+    private function parseListTestIdsOutput(string $output): array
     {
-        $plainOutput = preg_replace('/\x1B\[[0-9;]*m/', '', $output) ?? $output;
+        $this->discoveredTestIds = [];
+        $plainOutput = preg_replace('/\\x1B\\[[0-9;]*m/', '', $output);
 
-        preg_match_all('/^[ \t]*-[ \t]+([^\r\n]+)$/m', $plainOutput, $entries);
+        if ($plainOutput === null) {
+            throw new InvalidOption('Shard discovery output cannot be decoded.');
+        }
 
-        $classes = [];
+        $plainOutput = rtrim($plainOutput, "\\r\\n");
+
+        if ($plainOutput === '') {
+            return [];
+        }
+
         $originalClasses = [];
 
-        foreach ($entries[1] as $entry) {
-            if (! preg_match('/^((?:P\\\\)?[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*(?:\\\\[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*)*)::/u', $entry, $matches)) {
-                throw new InvalidOption('An unrecognised test entry was found in [--list-tests]. Refusing incomplete shard discovery.');
+        foreach (explode("\\n", $plainOutput) as $entry) {
+            $entry = rtrim($entry, "\\r");
+
+            if (preg_match('/^((?:P\\\\)?[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*(?:\\\\[A-Za-z_\x{0080}-\x{10FFFF}][A-Za-z0-9_\x{0080}-\x{10FFFF}]*)*)::(.+)$/uD', $entry, $matches) !== 1) {
+                throw new InvalidOption('An unrecognised test ID was found in [--list-test-ids]. Refusing incomplete shard discovery.');
             }
 
             $originalClass = $matches[1];
-            $class = str_starts_with($originalClass, 'P\\') ? substr($originalClass, 2) : $originalClass;
+            $class = str_starts_with($originalClass, 'P\\\\') ? substr($originalClass, 2) : $originalClass;
 
             if (isset($originalClasses[$class]) && $originalClasses[$class] !== $originalClass) {
                 throw new InvalidOption(sprintf(
@@ -291,11 +316,17 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
                 ));
             }
 
-            $classes[$class] = true;
+            $normalisedId = $class.'::'.$matches[2];
+
+            if (isset($this->discoveredTestIds[$class][$normalisedId])) {
+                throw new InvalidOption(sprintf('Duplicate test ID [%s] in shard discovery.', $normalisedId));
+            }
+
+            $this->discoveredTestIds[$class][$normalisedId] = true;
             $originalClasses[$class] = $originalClass;
         }
 
-        return array_keys($classes);
+        return array_keys($this->discoveredTestIds);
     }
 
     /**
@@ -457,7 +488,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
     private function verifyShardIntegrity(int $exitCode): int
     {
-        if (self::$expectedClasses === null) {
+        if (self::$expectedTestIds === null) {
             return $exitCode;
         }
 
@@ -483,14 +514,14 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             return $exitCode;
         }
 
-        ['missing' => $missing, 'unexpected' => $unexpected] = RunIntegrity::difference(self::$expectedClasses, $observed);
+        ['missing' => $missing, 'unexpected' => $unexpected] = RunIntegrity::difference(self::$expectedTestIds, $observed);
 
         if ($missing === [] && $unexpected === []) {
             return $exitCode;
         }
 
         $this->output->writeln(sprintf(
-            '  <fg=red;options=bold>ERROR</> Shard integrity failed: %d missing and %d unexpected test classes.',
+            '  <fg=red;options=bold>ERROR</> Shard integrity failed: %d missing and %d unexpected test IDs.',
             count($missing),
             count($unexpected),
         ));

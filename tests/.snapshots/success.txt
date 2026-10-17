@@ -1863,32 +1863,32 @@
   ✓ ensureFilterLengthIsSafe → it accepts filter within custom limit
   ✓ handleArguments → it returns original arguments when shard option is not present
   ✓ handleArguments → it removes parallel arguments from test discovery
-  ✓ parseListTestsOutput → it parses Tests\ namespaced classes from --list-tests output
-  ✓ parseListTestsOutput → it deduplicates repeated class names from multiple test methods
-  ✓ parseListTestsOutput → it rejects unknown test entries instead of silently certifying a partial inventory
-  ✓ parseListTestsOutput → it rejects native and generated class names that collide after normalisation
-  ✓ parseListTestsOutput → it handles ANSI-styled test discovery without losing class names
-  ✓ parseListTestsOutput → it parses Unicode PHP class identifiers from native and generated test entries
-  ✓ parseListTestsOutput → it returns an empty list for output with no matching lines
-  ✓ parseListTestsOutput → it parses non-Tests namespaced classes
-  ✓ parseListTestsOutput → it parses unnamespaced top-level classes
-  ✓ parseListTestsOutput → it strips the P\ Pest prefix but keeps the rest of the FQCN
-  ✓ parseListTestsOutput → it ignores junk lines that lack the " - …::" framing
-  ✓ buildListTestsCommand → it builds the list-tests command with the forwarded --test-directory
-  ✓ buildListTestsCommand → it strips --parallel and -p when building the list-tests command
-  ✓ buildListTestsCommand → it forwards --test-directory even when input arguments include one
-  ✓ buildListTestsCommand → it strips --processes=N when building the list-tests command
-  ✓ buildListTestsCommand → it strips --processes N (space-separated) when building the list-tests command
+  ✓ parseListTestIdsOutput → it parses Tests\ namespaced classes from --list-test-ids output
+  ✓ parseListTestIdsOutput → it deduplicates repeated class names from multiple test methods
+  ✓ parseListTestIdsOutput → it rejects unknown test entries instead of silently certifying a partial inventory
+  ✓ parseListTestIdsOutput → it rejects native and generated class names that collide after normalisation
+  ✓ parseListTestIdsOutput → it handles ANSI-styled test discovery without losing class names
+  ✓ parseListTestIdsOutput → it parses Unicode PHP class identifiers from native and generated test entries
+  ✓ parseListTestIdsOutput → it returns an empty list for output with no matching lines
+  ✓ parseListTestIdsOutput → it parses non-Tests namespaced classes
+  ✓ parseListTestIdsOutput → it parses unnamespaced top-level classes
+  ✓ parseListTestIdsOutput → it strips the P\ Pest prefix but keeps the rest of the FQCN
+  ✓ parseListTestIdsOutput → it rejects injected diagnostics mixed with native test IDs
+  ✓ buildListTestIdsCommand → it builds the list-tests command with the forwarded --test-directory
+  ✓ buildListTestIdsCommand → it strips --parallel and -p when building the list-tests command
+  ✓ buildListTestIdsCommand → it forwards --test-directory even when input arguments include one
+  ✓ buildListTestIdsCommand → it strips --processes=N when building the list-tests command
+  ✓ buildListTestIdsCommand → it strips --processes N (space-separated) when building the list-tests command
   ✓ addOutput → it displays shard information after test execution
   ✓ addOutput → it uses singular form for single test file
   ✓ addOutput → it returns original exit code when shard is not set
 
    PASS  Tests\Unit\Plugins\Shard\RunIntegrity
   ✓ it records only active runs and normalises generated Pest class names
-  ✓ it detects missing and unexpected classes without relying on assertion counts
+  ✓ it detects missing and unexpected test IDs without relying on assertion counts
   ✓ it aggregates parallel worker evidence without duplicate classes
   ✓ it fails closed on corrupted worker evidence
-  ✓ it fails a green run if an assigned class never executed
+  ✓ it fails a green run if one assigned test ID never completed
 
    PASS  Tests\Unit\Plugins\Tia\ContentHash
   ✓ of() → it returns false when file does not exist

@@ -9,40 +9,40 @@ afterEach(function (): void {
 });
 
 it('records only active runs and normalises generated Pest class names', function (): void {
-    RunIntegrity::observe('P\\Tests\\NotYetActive');
+    RunIntegrity::observe('P\\Tests\\NotYetActive::test');
     expect(RunIntegrity::observed())->toBeEmpty();
 
     RunIntegrity::activate();
-    RunIntegrity::observe('P\\Tests\\Feature\\Generated');
-    RunIntegrity::observe('Tests\\Unit\\PhpUnitCase');
-    RunIntegrity::observe('Tests\\Unit\\PhpUnitCase');
+    RunIntegrity::observe('P\\Tests\\Feature\\Generated::test_one');
+    RunIntegrity::observe('Tests\\Unit\\PhpUnitCase::test_two');
+    RunIntegrity::observe('Tests\\Unit\\PhpUnitCase::test_two');
 
     expect(RunIntegrity::observed())->toBe([
-        'Tests\\Feature\\Generated' => true,
-        'Tests\\Unit\\PhpUnitCase' => true,
+        'Tests\\Feature\\Generated::test_one' => true,
+        'Tests\\Unit\\PhpUnitCase::test_two' => true,
     ]);
 });
 
-it('detects missing and unexpected classes without relying on assertion counts', function (): void {
-    $expected = ['Tests\\A' => true, 'Tests\\B' => true];
-    $observed = ['Tests\\A' => true, 'Tests\\C' => true];
+it('detects missing and unexpected test IDs without relying on assertion counts', function (): void {
+    $expected = ['Tests\\A::first' => true, 'Tests\\A::second' => true];
+    $observed = ['Tests\\A::first' => true, 'Tests\\C::third' => true];
 
     expect(RunIntegrity::difference($expected, $observed))->toBe([
-        'missing' => ['Tests\\B'],
-        'unexpected' => ['Tests\\C'],
+        'missing' => ['Tests\\A::second'],
+        'unexpected' => ['Tests\\C::third'],
     ]);
 });
 
 it('aggregates parallel worker evidence without duplicate classes', function (): void {
     $runId = bin2hex(random_bytes(16));
     RunIntegrity::activate();
-    RunIntegrity::observe('P\\Tests\\First');
-    RunIntegrity::observe('Tests\\Second');
+    RunIntegrity::observe('P\\Tests\\First::first');
+    RunIntegrity::observe('Tests\\Second::second');
     RunIntegrity::writeWorkerEvidence($runId);
 
     expect(RunIntegrity::collectWorkerEvidence($runId))->toBe([
-        'Tests\\First' => true,
-        'Tests\\Second' => true,
+        'Tests\\First::first' => true,
+        'Tests\\Second::second' => true,
     ])->and(RunIntegrity::collectWorkerEvidence($runId))->toBeNull();
 });
 
@@ -55,15 +55,15 @@ it('fails closed on corrupted worker evidence', function (): void {
         ->and(file_exists($path))->toBeFalse();
 });
 
-it('fails a green run if an assigned class never executed', function (): void {
-    $expected = new ReflectionProperty(Shard::class, 'expectedClasses');
+it('fails a green run if one assigned test ID never completed', function (): void {
+    $expected = new ReflectionProperty(Shard::class, 'expectedTestIds');
     $original = $expected->getValue();
 
     try {
-        $expected->setValue(null, ['Tests\\Seen' => true, 'Tests\\Missing' => true]);
+        $expected->setValue(null, ['Tests\\Seen::one' => true, 'Tests\\Seen::two' => true]);
 
         RunIntegrity::activate();
-        RunIntegrity::observe('P\\Tests\\Seen');
+        RunIntegrity::observe('P\\Tests\\Seen::one');
 
         $output = new BufferedOutput;
 

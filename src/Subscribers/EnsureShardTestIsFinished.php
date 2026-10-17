@@ -19,7 +19,7 @@ final readonly class EnsureShardTestIsFinished implements FinishedSubscriber
         $test = $event->test();
 
         if ($test instanceof TestMethod) {
-            RunIntegrity::observe($test->className());
+            RunIntegrity::observe($test->id());
         }
     }
 }

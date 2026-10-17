@@ -29,13 +29,13 @@ final class RunIntegrity
         self::$observed = [];
     }
 
-    public static function observe(string $class): void
+    public static function observe(string $testId): void
     {
         if (! self::$active) {
             return;
         }
 
-        $normalised = str_starts_with($class, 'P\\') ? substr($class, 2) : $class;
+        $normalised = str_starts_with($testId, 'P\\') ? substr($testId, 2) : $testId;
 
         if ($normalised !== '') {
             self::$observed[$normalised] = true;
