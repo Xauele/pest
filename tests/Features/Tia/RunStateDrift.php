@@ -274,6 +274,41 @@ test('an untracked JUnit report written during tests does not count as source dr
         ->and($project->path('junit-output.xml'))->toBeFile();
 })->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
 
+test('an untracked runtime CSV created during replay invalidates the run', function (array $arguments): void {
+    $project = Project::make('master');
+    $project->seed('master');
+
+    $project->write('tests/Unit/CalculatorTest.php', <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        use Fixture\App\Calculator;
+
+        test('adds two numbers', function (): void {
+            file_put_contents(dirname(__DIR__, 2).'/data.csv', "id,value\n1,changed\n");
+            expect((new Calculator)->add(1, 2))->toBe(3);
+        });
+
+        test('subtracts two numbers', function (): void {
+            expect((new Calculator)->subtract(3, 1))->toBe(2);
+        });
+        PHP);
+
+    $previous = $project->graph();
+    $first = $project->pest('--tia', ...$arguments);
+
+    expect($project->path('data.csv'))->toBeFile()
+        ->and($first->exitCode)->toBe(1, $first->describe())
+        ->and($first->output)->toContain('Project sources changed during the run')
+        ->and($project->graph())->toEqual($previous);
+
+    $second = $project->pest('--tia', ...$arguments);
+
+    expect($second->exitCode)->toBe(0, $second->describe())
+        ->and($second->tally())->toContain('6 passed');
+})->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
+
 test('a later Terminable plugin cannot approve a tree it changes after TIA output', function (array $arguments): void {
     $project = Project::make('master');
     $project->seed('master');
