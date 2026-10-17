@@ -16,6 +16,7 @@ use Pest\Subscribers\EnsureShardTimingsAreCollected;
 use Pest\Subscribers\EnsureShardTimingStarted;
 use Pest\TestSuite;
 use PHPUnit\Event;
+use PHPUnit\Runner\Version;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -284,7 +285,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             throw new InvalidOption('Shard discovery output cannot be decoded.');
         }
 
-        $versionHeader = \PHPUnit\Runner\Version::getVersionString().PHP_EOL.PHP_EOL;
+        $versionHeader = Version::getVersionString().PHP_EOL.PHP_EOL;
 
         if (str_starts_with($plainOutput, $versionHeader)) {
             $plainOutput = substr($plainOutput, strlen($versionHeader));

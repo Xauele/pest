@@ -2,6 +2,7 @@
 
 use Pest\Exceptions\InvalidOption;
 use Pest\Plugins\Shard;
+use PHPUnit\Runner\Version;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -419,7 +420,7 @@ OUT;
     it('accepts the exact native PHPUnit CLI version header without treating it as a test', function (): void {
         $shard = new Shard(new BufferedOutput);
         $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
-        $header = \PHPUnit\Runner\Version::getVersionString().PHP_EOL.PHP_EOL;
+        $header = Version::getVersionString().PHP_EOL.PHP_EOL;
 
         expect($method->invoke($shard, $header.'P\\Acme\\RealTest::method'))->toBe(['Acme\\RealTest']);
     })->group('integration');
