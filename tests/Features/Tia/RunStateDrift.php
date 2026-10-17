@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+use Pest\Plugins\Tia;
 use Pest\Plugins\Tia\ChangedFiles;
+use Pest\Plugins\Tia\Contracts\State;
 use Pest\Support\Coverage;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Fixtures\Tia\Project;
 
 afterEach(function (): void {
@@ -269,7 +272,6 @@ test('an untracked JUnit report written during tests does not count as source dr
         ->and($project->path('junit-output.xml'))->toBeFile();
 })->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
 
-
 test('a later Terminable plugin cannot approve a tree it changes after TIA output', function (array $arguments): void {
     $project = Project::make('master');
     $project->seed('master');
@@ -308,7 +310,7 @@ test('a later Terminable plugin cannot approve a tree it changes after TIA outpu
 
     $pluginsFile = $project->path('vendor/pest-plugins.json');
     $plugins = json_decode((string) file_get_contents($pluginsFile), true);
-    expect($plugins)->toBeArray()->toContain('Pest\\Plugins\\Tia');
+    expect($plugins)->toBeArray()->toContain(Tia::class);
 
     unlink($pluginsFile);
     $project->write('vendor/pest-plugins.json', (string) json_encode([...$plugins, 'Pest\\Plugins\\LateSourceMutation']));
@@ -328,13 +330,13 @@ test('a later Terminable plugin cannot approve a tree it changes after TIA outpu
 
 test('publication rolls back the graph if its state write mutates a source', function (): void {
     $project = Project::make('master');
-    $state = new class($project->path('app/Greeter.php')) implements \Pest\Plugins\Tia\Contracts\State
+    $state = new class($project->path('app/Greeter.php')) implements State
     {
-        private array $values = [\Pest\Plugins\Tia::KEY_GRAPH => 'previous graph'];
+        private array $values = [Tia::KEY_GRAPH => 'previous graph'];
 
         private bool $mutated = false;
 
-        public function __construct(private string $source) {}
+        public function __construct(private readonly string $source) {}
 
         public function read(string $key): ?string
         {
@@ -345,7 +347,7 @@ test('publication rolls back the graph if its state write mutates a source', fun
         {
             $this->values[$key] = $content;
 
-            if ($key === \Pest\Plugins\Tia::KEY_GRAPH && ! $this->mutated) {
+            if ($key === Tia::KEY_GRAPH && ! $this->mutated) {
                 $this->mutated = true;
                 $contents = (string) file_get_contents($this->source);
                 file_put_contents($this->source, str_replace('return sprintf(', 'return sprintf(', $contents)."\n// source modified while graph was written\n");
@@ -375,14 +377,14 @@ test('publication rolls back the graph if its state write mutates a source', fun
     $start = new ChangedFiles($project->path)->runSnapshot();
     expect($start)->not->toBeNull();
 
-    $tia = new ReflectionClass(\Pest\Plugins\Tia::class)->newInstanceWithoutConstructor();
-    new ReflectionProperty(\Pest\Plugins\Tia::class, 'state')->setValue($tia, $state);
-    new ReflectionProperty(\Pest\Plugins\Tia::class, 'output')->setValue($tia, new \Symfony\Component\Console\Output\BufferedOutput);
-    new ReflectionProperty(\Pest\Plugins\Tia::class, 'snapshotRoot')->setValue($tia, $project->path);
-    new ReflectionProperty(\Pest\Plugins\Tia::class, 'startRunSnapshot')->setValue($tia, $start);
-    new ReflectionProperty(\Pest\Plugins\Tia::class, 'stageGraphWrites')->setValue($tia, true);
-    new ReflectionProperty(\Pest\Plugins\Tia::class, 'stagedGraphJson')->setValue($tia, 'candidate graph');
+    $tia = new ReflectionClass(Tia::class)->newInstanceWithoutConstructor();
+    new ReflectionProperty(Tia::class, 'state')->setValue($tia, $state);
+    new ReflectionProperty(Tia::class, 'output')->setValue($tia, new BufferedOutput);
+    new ReflectionProperty(Tia::class, 'snapshotRoot')->setValue($tia, $project->path);
+    new ReflectionProperty(Tia::class, 'startRunSnapshot')->setValue($tia, $start);
+    new ReflectionProperty(Tia::class, 'stageGraphWrites')->setValue($tia, true);
+    new ReflectionProperty(Tia::class, 'stagedGraphJson')->setValue($tia, 'candidate graph');
 
     expect($tia->finalizeOutput(0))->toBe(1)
-        ->and($state->read(\Pest\Plugins\Tia::KEY_GRAPH))->toBe('previous graph');
+        ->and($state->read(Tia::KEY_GRAPH))->toBe('previous graph');
 })->skipOnWindows();

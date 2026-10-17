@@ -478,13 +478,7 @@ final readonly class ChangedFiles
             return true;
         }
 
-        foreach (['.php', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.mjs', '.cjs', '.mts', '.blade.php', '.sql', '.twig', '.scss', '.css'] as $suffix) {
-            if (str_ends_with($basename, $suffix)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any(['.php', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.mjs', '.cjs', '.mts', '.blade.php', '.sql', '.twig', '.scss', '.css'], fn (string $suffix): bool => str_ends_with($basename, $suffix));
     }
 
     public function currentSha(): ?string
