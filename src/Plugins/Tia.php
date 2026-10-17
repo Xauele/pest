@@ -6,6 +6,7 @@ namespace Pest\Plugins;
 
 use NunoMaduro\Collision\Adapters\Phpunit\Printers\DefaultPrinter;
 use Pest\Contracts\Plugins\AddsOutput;
+use Pest\Contracts\Plugins\FinalizesOutput;
 use Pest\Contracts\Plugins\HandlesArguments;
 use Pest\Contracts\Plugins\HandlesOriginalArguments;
 use Pest\Contracts\Plugins\Terminable;
@@ -44,7 +45,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * @internal
  */
-final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArguments, Terminable
+final class Tia implements AddsOutput, FinalizesOutput, HandlesArguments, HandlesOriginalArguments, Terminable
 {
     use HandleArguments;
 
@@ -183,6 +184,12 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
 
     private bool $runTreeChanged = false;
 
+    private bool $stageGraphWrites = false;
+
+    private ?string $stagedGraphJson = null;
+
+    private ?string $snapshotRoot = null;
+
     private bool $piggybackCoverage = false;
 
     private bool $recordingActive = false;
@@ -253,7 +260,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
             return false;
         }
 
-        $current = new ChangedFiles(TestSuite::getInstance()->rootPath)->runSnapshot();
+        $current = new ChangedFiles($this->snapshotRoot ?? TestSuite::getInstance()->rootPath)->runSnapshot();
 
         if ($current === $this->startRunSnapshot) {
             return false;
@@ -278,7 +285,9 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
 
     private function loadGraph(string $projectRoot): ?Graph
     {
-        $json = $this->state->read(self::KEY_GRAPH);
+        $json = $this->stageGraphWrites && $this->stagedGraphJson !== null
+            ? $this->stagedGraphJson
+            : $this->state->read(self::KEY_GRAPH);
 
         if ($json === null) {
             return null;
@@ -328,6 +337,12 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
 
         if ($json === null) {
             return false;
+        }
+
+        if ($this->stageGraphWrites) {
+            $this->stagedGraphJson = $json;
+
+            return true;
         }
 
         return $this->state->write(self::KEY_GRAPH, $json);
@@ -690,6 +705,8 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
 
     public function addOutput(int $exitCode): int
     {
+        // Keep final graph mutations private until all the kernel's terminators finish.
+        $this->stageGraphWrites = ! Parallel::isWorker() && $this->startRunSnapshot !== null;
         $exitCode = $this->addOutputBeforeTermination($exitCode);
 
         if (! Parallel::isWorker()) {
@@ -701,6 +718,51 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
                 return $exitCode === 0 ? 1 : $exitCode;
             }
         }
+
+        return $exitCode;
+    }
+
+    public function finalizeOutput(int $exitCode): int
+    {
+        if (! $this->stageGraphWrites || Parallel::isWorker()) {
+            return $exitCode;
+        }
+
+        if ($this->runTreeChangedDuringExecution()) {
+            $this->stagedGraphJson = null;
+            $this->purgeWorkerPartials();
+
+            return $exitCode === 0 ? 1 : $exitCode;
+        }
+
+        if ($this->stagedGraphJson === null) {
+            return $exitCode;
+        }
+
+        $previous = $this->state->read(self::KEY_GRAPH);
+
+        if (! $this->state->write(self::KEY_GRAPH, $this->stagedGraphJson)) {
+            $this->renderBadge('ERROR', 'Could not publish the final TIA graph.');
+
+            return $exitCode === 0 ? 1 : $exitCode;
+        }
+
+        // A write can itself coincide with a source edit. Undo the publication.
+        if ($this->runTreeChangedDuringExecution()) {
+            $restored = $previous === null
+                ? $this->state->delete(self::KEY_GRAPH)
+                : $this->state->write(self::KEY_GRAPH, $previous);
+
+            if (! $restored) {
+                $this->renderBadge('ERROR', 'Could not restore the previous TIA graph.');
+            }
+
+            $this->stagedGraphJson = null;
+
+            return $exitCode === 0 ? 1 : $exitCode;
+        }
+
+        $this->stagedGraphJson = null;
 
         return $exitCode;
     }
@@ -894,6 +956,7 @@ final class Tia implements AddsOutput, HandlesArguments, HandlesOriginalArgument
                 : new TiaRequiresRemote);
         }
 
+        $this->snapshotRoot = $projectRoot;
         $this->startRunSnapshot = new ChangedFiles($projectRoot)->runSnapshot();
 
         if ($this->startRunSnapshot === null) {
