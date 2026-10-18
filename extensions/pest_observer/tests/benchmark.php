@@ -24,6 +24,7 @@ function nativeBenchmarkWorkload(int $iterations): int
     for ($i = 0; $i < $iterations; $i++) {
         $total += nativeBenchmarkLeaf($i);
     }
+
     return $total;
 }
 
