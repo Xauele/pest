@@ -110,11 +110,6 @@ try {
     @unlink($dataFile);
 }
 
-/*
- * NEGATIVE dependency: a missing file can be added later and change behavior
- * even though no file was successfully opened during the original test.
- * Failure to see the attempted lookup is a cache-correctness bug.
- */
 $missing = $root.'/tests/__pest_uncreated_'.bin2hex(random_bytes(6)).'.php';
 
 if (! pest_observer_start($root)) {
