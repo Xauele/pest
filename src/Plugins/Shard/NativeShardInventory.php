@@ -78,7 +78,7 @@ final class NativeShardInventory
     }
 
     /**
-     * @param  list<string>  $selected
+     * @param  list<non-empty-string>  $selected
      * @return array<string, true>
      */
     public static function selectedIds(array $selected): array
