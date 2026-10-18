@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Pest\Plugins\Tia\ChangedFiles;
 use Pest\Plugins\Tia\ContentHash;
 
 describe('of()', function (): void {
@@ -263,7 +264,7 @@ describe('output format', function (): void {
 });
 
 describe('observable source semantics', function (): void {
-    it('observable PHPDoc annotations cannot share the same TIA fingerprint', function (): void {
+    it('does not conflate reflection-visible PHPDoc roles', function (): void {
         $before = "<?php\n/** @permission admin */\nfunction accessPolicy() {}";
         $after = "<?php\n/** @permission guest */\nfunction accessPolicy() {}";
 
@@ -271,7 +272,7 @@ describe('observable source semantics', function (): void {
             ->not->toBe(ContentHash::ofContent('app/Policy.php', $after));
     });
 
-    it('observable PHP line numbers cannot share the same TIA fingerprint', function (): void {
+    it('does not conflate PHP line-number changes', function (): void {
         $before = "<?php\nreturn __LINE__;\n";
         $after = "<?php\n\nreturn __LINE__;\n";
 
@@ -279,7 +280,7 @@ describe('observable source semantics', function (): void {
             ->not->toBe(ContentHash::ofContent('app/Caller.php', $after));
     });
 
-    it('observable Blade text whitespace cannot share the same TIA fingerprint', function (): void {
+    it('does not conflate rendered Blade spacing', function (): void {
         $before = '<p>Price:  100</p>';
         $after = '<p>Price: 100</p>';
 
@@ -287,7 +288,7 @@ describe('observable source semantics', function (): void {
             ->not->toBe(ContentHash::ofContent('resources/views/checkout.blade.php', $after));
     });
 
-    it('observable TypeScript directives cannot share the same TIA fingerprint', function (): void {
+    it('does not discard TypeScript check directives', function (): void {
         $before = "// @ts-check\nconst quantity = 1;";
         $after = 'const quantity = 1;';
 
@@ -295,7 +296,7 @@ describe('observable source semantics', function (): void {
             ->not->toBe(ContentHash::ofContent('resources/js/checkout.ts', $after));
     });
 
-    it('observable Vite source pragmas cannot share the same TIA fingerprint', function (): void {
+    it('does not discard Vite bundler annotations', function (): void {
         $before = "/* @vite-ignore */\nimport(component);";
         $after = 'import(component);';
 
@@ -303,7 +304,7 @@ describe('observable source semantics', function (): void {
             ->not->toBe(ContentHash::ofContent('resources/js/Pages/Orders.vue', $after));
     });
 
-    it('observable source changes survive last-run tree filtering', function (): void {
+    it('retains observable edits through the last-run cache filter', function (): void {
         $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'pest-tia-observable-'.bin2hex(random_bytes(8));
         mkdir($root.'/app', 0755, true);
         $path = $root.'/app/Permission.php';
@@ -317,7 +318,7 @@ describe('observable source semantics', function (): void {
 
             file_put_contents($path, $after);
 
-            $changes = new \Pest\Plugins\Tia\ChangedFiles($root);
+            $changes = new ChangedFiles($root);
             expect($changes->filterUnchangedSinceLastRun(
                 ['app/Permission.php'],
                 ['app/Permission.php' => $previous],
