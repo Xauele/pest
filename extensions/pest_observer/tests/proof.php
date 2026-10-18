@@ -109,3 +109,39 @@ try {
 } finally {
     @unlink($dataFile);
 }
+
+/*
+ * NEGATIVE dependency: a missing file can be added later and change behavior
+ * even though no file was successfully opened during the original test.
+ * Failure to see the attempted lookup is a cache-correctness bug.
+ */
+$missing = $root.'/tests/__pest_uncreated_'.bin2hex(random_bytes(6)).'.php';
+
+if (! pest_observer_start($root)) {
+    throw new RuntimeException('Cannot start negative file lookup observation');
+}
+
+$absent = file_exists($missing);
+$negativeEvidence = pest_observer_stop();
+
+$check($absent === false, 'The missing fixture unexpectedly existed');
+$check(
+    $negativeEvidence['untracked_effect_risk'] === true,
+    'RED COUNTEREXAMPLE: failed file_exists() lookup was invisible to native TIA',
+);
+$check($negativeEvidence['safe_to_skip_tests'] === false, 'A missing input lookup cannot certify skipping');
+echo "NATIVE_NEGATIVE_FILE_LOOKUP_RISK=PASS\n";
+
+if (! pest_observer_start($root)) {
+    throw new RuntimeException('Cannot start directory enumeration observation');
+}
+
+$matches = glob($root.'/tests/__pest_uncreated_*.php');
+$enumerationEvidence = pest_observer_stop();
+
+$check($matches === [], 'Unexpected matching fixture files');
+$check(
+    $enumerationEvidence['untracked_effect_risk'] === true,
+    'RED COUNTEREXAMPLE: empty glob() enumeration was invisible to native TIA',
+);
+echo "NATIVE_NEGATIVE_DIRECTORY_ENUMERATION_RISK=PASS\n";
