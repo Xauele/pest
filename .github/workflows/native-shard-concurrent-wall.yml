@@ -1,0 +1,129 @@
+name: Native Shard Concurrent CI Wall Benchmark
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  concurrent_wall:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Prepare equivalent deterministic real suite
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          baseline = Path('phpunit.xml').read_text()
+          marker = '      <exclude>./tests/Fixtures/Tia</exclude>'
+          if baseline.count(marker) != 1:
+              raise SystemExit('Unable to derive stable real-suite benchmark configuration')
+          Path('phpunit.native-concurrent-benchmark.xml').write_text(
+              baseline.replace(marker, marker + '\n      <exclude>./tests/PHPUnit/CustomAffixes</exclude>')
+          )
+          print('CONCURRENT_EXCLUSION=Randomized CustomAffixes, excluded identically in both modes')
+          PY
+      - name: Run four actual shard processes simultaneously
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pest-concurrent
+          echo 'round,mode,wall_seconds' > /tmp/pest-concurrent/wall.csv
+          args=(bin/pest --configuration=phpunit.native-concurrent-benchmark.xml --parallel --processes=2 --exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test --colors=never)
+          run_batch() {
+            local round="$1" mode="$2" prefix="/tmp/pest-concurrent/$1-$2"
+            local runner=(env -u PEST_SHARD_NATIVE -u PEST_NATIVE_SHARD_ALLOCATION)
+            if [[ "$mode" == native ]]; then
+              runner=(env PEST_SHARD_NATIVE=1 PEST_NATIVE_SHARD_ALLOCATION=ordered)
+            fi
+            local pids=()
+            local started ended failed=0
+            started=$(date +%s%N)
+            for shard in 1 2 3 4; do
+              /usr/bin/time -f '%e,%M' -o "$prefix-$shard.time" "${runner[@]}" php "${args[@]}" "--shard=$shard/4" "--log-junit=$prefix-$shard.xml" > "$prefix-$shard.log" 2>&1 &
+              pids+=("$!")
+            done
+            for i in 0 1 2 3; do
+              if ! wait "${pids[$i]}"; then
+                echo "::error::Mode $mode, round $round, shard $((i+1)) failed"
+                tail -n 100 "$prefix-$((i+1)).log"
+                failed=1
+              fi
+            done
+            ended=$(date +%s%N)
+            if [[ "$failed" != 0 ]]; then exit 1; fi
+            local elapsed
+            elapsed=$(python3 -c 'import sys; print(round((int(sys.argv[2])-int(sys.argv[1]))/1e9, 4))' "$started" "$ended")
+            echo "$round,$mode,$elapsed" >> /tmp/pest-concurrent/wall.csv
+            echo "CONCURRENT_BATCH round=$round mode=$mode actual_wall_s=$elapsed"
+            for shard in 1 2 3 4; do
+              echo "CONCURRENT_SHARD round=$round mode=$mode shard=$shard root_elapsed_and_rss=$(cat "$prefix-$shard.time")"
+            done
+          }
+          run_batch warmup legacy
+          run_batch warmup native
+          for round in 1 2 3 4; do
+            if (( round % 2 == 1 )); then
+              run_batch "$round" legacy
+              run_batch "$round" native
+            else
+              run_batch "$round" native
+              run_batch "$round" legacy
+            fi
+          done
+          python3 - <<'PY'
+          import csv
+          import xml.etree.ElementTree as ET
+          from collections import Counter
+          from pathlib import Path
+          from statistics import median
+          root = Path('/tmp/pest-concurrent')
+          rows = list(csv.DictReader((root / 'wall.csv').open()))
+          elapsed = {(r['round'],r['mode']): float(r['wall_seconds']) for r in rows}
+          for round in map(str, range(1, 5)):
+              sets = {}
+              for mode in ('legacy','native'):
+                  counts = Counter()
+                  for shard in range(1, 5):
+                      path = root / f'{round}-{mode}-{shard}.xml'
+                      if not path.is_file():
+                          raise SystemExit(f'Missing JUnit output: {path}')
+                      counts.update(
+                          (case.get('classname'),case.get('name'))
+                          for case in ET.parse(path).iter('testcase')
+                      )
+                  if sum(counts.values()) < 1500:
+                      raise SystemExit(f'Insufficient test coverage: {round}/{mode}: {sum(counts.values())}')
+                  sets[mode] = counts
+              if sets['legacy'] != sets['native']:
+                  print('DIFFERENTIAL_MISSING=',list((sets['legacy']-sets['native']).items())[:8])
+                  print('DIFFERENTIAL_UNEXPECTED=',list((sets['native']-sets['legacy']).items())[:8])
+                  raise SystemExit(f'Concurrent JUnit multiset mismatch, round {round}')
+              ls, ns = elapsed[(round,'legacy')],elapsed[(round,'native')]
+              print(f'CONCURRENT_PARITY_PASS round={round} junit_cases={sum(sets["native"].values())} legacy_wall_s={ls:.4f} native_wall_s={ns:.4f} ratio={ns/ls:.4f}')
+          legacy=[elapsed[(str(r),'legacy')] for r in range(1,5)]
+          native=[elapsed[(str(r),'native')] for r in range(1,5)]
+          paired=[native[i]/legacy[i] for i in range(4)]
+          print(f'CONCURRENT_WALL_SUMMARY median_legacy_s={median(legacy):.4f} median_native_s={median(native):.4f} median_paired_ratio={median(paired):.4f}')
+          print('CONCURRENT_BENCH_LIMIT=Same shared GitHub runner, 4 simultaneous CLI shards x 2 ParaTest processes; wall is measured across all four, not a cross-runner CI pipeline makespan; memory figures are parent-only.')
+          PY
