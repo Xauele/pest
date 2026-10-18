@@ -43,7 +43,7 @@ final class NativeShardInventory
                 $file = $test->file();
 
                 if (class_exists($class, false)) {
-                    $classFile = (new ReflectionClass($class))->getFileName();
+                    $classFile = new ReflectionClass($class)->getFileName();
 
                     if (is_string($classFile)) {
                         $file = $classFile;
