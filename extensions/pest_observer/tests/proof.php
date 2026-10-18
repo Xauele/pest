@@ -85,8 +85,6 @@ try {
     @unlink($fixture);
 }
 
-// Internal file reads have no user-function entry to observe.
-// This negative proof must never be used to authorize skipping tests.
 $dataFile = tempnam(sys_get_temp_dir(), 'pest-native-io-');
 if (! is_string($dataFile)) {
     throw new RuntimeException('Could not allocate native I/O negative fixture');
