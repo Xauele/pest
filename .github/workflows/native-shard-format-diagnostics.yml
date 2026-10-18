@@ -25,8 +25,8 @@ jobs:
         run: composer update --prefer-stable --no-interaction --no-progress
       - name: Show Pint changes without pushing
         run: |
-          vendor/bin/pint src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
-          git diff --exit-code -- src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
+          vendor/bin/pint src/Factories/TestCaseFactory.php src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
+          git diff --exit-code -- src/Factories/TestCaseFactory.php src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
 
       - name: Show success snapshot regeneration delta
         env:
