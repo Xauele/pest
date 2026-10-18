@@ -16,13 +16,13 @@ it('preserves stable discovery-order allocation without assuming test counts pre
 it('uses measured durations to split expensive files rather than counting cases', function (): void {
     $weights = [
         '/suite/a.php' => 9.5,
-        '/suite/b.php' => 0.1,
+        '/suite/b.php' => 0.9,
         '/suite/c.php' => 9.0,
-        '/suite/d.php' => 0.2,
+        '/suite/d.php' => 1.0,
     ];
 
-    expect(NativeShardInventory::allocateByEstimatedDuration($weights, 1, 2))->toBe(['/suite/a.php', '/suite/d.php'])
-        ->and(NativeShardInventory::allocateByEstimatedDuration($weights, 2, 2))->toBe(['/suite/c.php', '/suite/b.php']);
+    expect(NativeShardInventory::allocateByEstimatedDuration($weights, 1, 2))->toBe(['/suite/a.php', '/suite/b.php'])
+        ->and(NativeShardInventory::allocateByEstimatedDuration($weights, 2, 2))->toBe(['/suite/c.php', '/suite/d.php']);
 });
 
 it('assigns every estimated-duration file once and is invariant to insertion order', function (): void {
