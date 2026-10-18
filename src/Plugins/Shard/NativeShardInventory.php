@@ -88,10 +88,6 @@ final class NativeShardInventory
     }
 
     /**
-     * Assign whole files to shards by native PHPUnit test-case counts, rather than
-     * by file position. This is a deterministic LPT approximation, not a claim
-     * that test-count weights are equivalent to observed execution times.
-     *
      * @param  list<non-empty-string>  $available
      * @return list<non-empty-string>
      */
@@ -136,8 +132,6 @@ final class NativeShardInventory
         $files = array_keys($testCounts);
         usort($files, static fn (string $left, string $right): int => ($testCounts[$right] <=> $testCounts[$left]) ?: strcmp($left, $right));
 
-        // Empty shards do not need heap entries; this bounds allocation memory
-        // to O(min(files, shards)), even for a very large shard count.
         $activeShards = min($total, count($files));
 
         if ($index > $activeShards) {
@@ -172,10 +166,6 @@ final class NativeShardInventory
         return $selected;
     }
 
-    /**
-     * Drop the discovery catalogue before starting workers. The selected ID
-     * manifest is already copied into RunIntegrity by the caller.
-     */
     public static function release(): void
     {
         self::$byFile = null;
