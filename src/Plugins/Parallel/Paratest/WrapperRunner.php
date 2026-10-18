@@ -664,6 +664,10 @@ final class WrapperRunner implements RunnerInterface
         $native = Parallel::getGlobal('NATIVE_SHARD_FILE_ALLOCATION');
         $allFiles = array_keys($files);
 
+        if (is_string($native)) {
+            $allFiles = NativeShardInventory::filterDiscoveredFiles($allFiles);
+        }
+
         if (getenv('PEST_NATIVE_SHARD_DEBUG') === '1') {
             $this->output->writeln('DEBUG_NATIVE_DISCOVERY: '.json_encode($allFiles, JSON_THROW_ON_ERROR));
         }

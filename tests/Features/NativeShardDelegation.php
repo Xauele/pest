@@ -31,8 +31,10 @@ it('uses the native ParaTest suite inventory for Pest and PHPUnit sharding', fun
 
         $output = removeAnsiEscapeSequences($process->getOutput().$process->getErrorOutput());
 
+        $expectedCount = $configuration === 'ShardIntegrity.xml' && $shard === '1/2' ? 2 : 1;
+
         expect($process->getExitCode())->toBe(0, $output)
-            ->and($output)->toContain($expected)
+            ->and($output)->toContain($expectedCount.' passed')
             ->and($output)->toContain('Shard:')
             ->and($output)->toContain($shard === '1/2' ? '1 of 2' : '2 of 2');
     }

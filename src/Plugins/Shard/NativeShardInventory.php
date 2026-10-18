@@ -49,6 +49,38 @@ final class NativeShardInventory
     }
 
     /**
+     * Keep the native PHPUnit suite as the authoritative set of runnable files.
+     * Bootstrapped Pest helpers must not silently expand a configured suite.
+     *
+     * @param  list<string>  $available
+     * @return list<string>
+     */
+    public static function filterDiscoveredFiles(array $available): array
+    {
+        if (self::$byFile === null) {
+            throw new RuntimeException('Native PHPUnit discovery inventory is missing.');
+        }
+
+        $files = [];
+
+        foreach ($available as $path) {
+            $canonical = self::canonicalFile($path);
+
+            if (isset(self::$byFile[$canonical])) {
+                $files[$canonical] = $canonical;
+            }
+        }
+
+        foreach (array_keys(self::$byFile) as $discovered) {
+            if (! isset($files[$discovered])) {
+                throw new RuntimeException('A discovered native PHPUnit test file was not available to ParaTest: '.$discovered);
+            }
+        }
+
+        return array_values($files);
+    }
+
+    /**
      * @param  list<string>  $selected
      * @return array<string, true>
      */
