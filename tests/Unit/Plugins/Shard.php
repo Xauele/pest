@@ -629,7 +629,7 @@ describe('addOutput', function (): void {
 describe('native time-balanced shard allocation', function (): void {
     it('matches the original deterministic allocation with ties, zero times and large shard counts', function (): void {
         $shard = new Shard(new BufferedOutput);
-        $partition = (new ReflectionClass($shard))->getMethod('partitionByTime');
+        $partition = new ReflectionClass($shard)->getMethod('partitionByTime');
 
         $classes = [];
         $timings = [];
