@@ -92,7 +92,7 @@ jobs:
           set -euo pipefail
           php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --group=native-shadow-proof --colors=never --log-junit=/tmp/native-shadow-serial.xml > /tmp/native-shadow-serial.log 2>&1 || { cat /tmp/native-shadow-serial.log; exit 1; }
           cat /tmp/native-shadow-serial.log
-          grep -Eq 'Tests:[[:space:]]+8 passed' /tmp/native-shadow-serial.log || exit 1
+          grep -Eq 'Tests:[[:space:]]+9 passed' /tmp/native-shadow-serial.log || exit 1
           echo 'NATIVE_SHADOW_SERIAL_ORACLE=PASS'
       - name: Per-test shadow differential and integrity controls, ParaTest workers
         shell: bash
@@ -105,6 +105,8 @@ jobs:
           PAO_DISABLE: '1'
         run: |
           set -euo pipefail
+          mkdir -p /tmp/native-shadow-worker-pids
+          export PEST_NATIVE_SHADOW_PID_DIR=/tmp/native-shadow-worker-pids
           php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --group=native-shadow-proof --parallel --processes=2 --colors=never --log-junit=/tmp/native-shadow-parallel.xml > /tmp/native-shadow-parallel.log 2>&1 || { cat /tmp/native-shadow-parallel.log; exit 1; }
           cat /tmp/native-shadow-parallel.log
           python3 - <<'PY'
@@ -121,5 +123,15 @@ jobs:
           if serial != parallel:
               raise SystemExit('ParaTest executed a different exact JUnit multiset from sequential Pest')
           PY
-          grep -Eq 'Tests:[[:space:]]+8 passed' /tmp/native-shadow-parallel.log || exit 1
+          grep -Eq 'Tests:[[:space:]]+9 passed' /tmp/native-shadow-parallel.log || exit 1
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('/tmp/native-shadow-worker-pids')
+          primary = (root/'primary.pid').read_text().strip()
+          secondary = (root/'secondary.pid').read_text().strip()
+          print('NATIVE_SHADOW_WORKER_PIDS=', primary, secondary)
+          if not primary.isdigit() or not secondary.isdigit() or primary == secondary:
+              raise SystemExit('Two different fixtures must be observed in distinct ParaTest worker processes')
+          print('NATIVE_SHADOW_TRUE_MULTIWORKER_ISOLATION=PASS')
+          PY
           echo 'NATIVE_SHADOW_PARATEST_ORACLE=PASS'

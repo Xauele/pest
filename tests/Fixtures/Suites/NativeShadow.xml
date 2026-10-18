@@ -6,6 +6,7 @@
   <testsuites>
     <testsuite name="native-shadow-oracle">
       <file>NativeShadowTest.php</file>
+      <file>NativeShadowSecondaryTest.php</file>
     </testsuite>
   </testsuites>
 </phpunit>

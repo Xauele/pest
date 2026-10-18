@@ -37,6 +37,12 @@ it('captures actual Zend file entries alongside independent PCOV/Xdebug coverage
     $recorder->reset();
 
     expect($recorder->nativeShadowReports())->toBeEmpty();
+
+    $proofDir = getenv('PEST_NATIVE_SHADOW_PID_DIR');
+
+    if (is_string($proofDir) && $proofDir !== '') {
+        file_put_contents($proofDir.DIRECTORY_SEPARATOR.'primary.pid', (string) getmypid());
+    }
 })->group('native-shadow-proof');
 
 it('must keep unknown internal data I/O outside both file-code oracles', function (): void {
