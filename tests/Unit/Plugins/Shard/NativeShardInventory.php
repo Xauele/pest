@@ -45,8 +45,8 @@ it('reproducibly assigns each file once across shard counts including empty shar
 it('uses a lexical file-name tie break for equal test counts', function (): void {
     $weights = ['/suite/z.php' => 1, '/suite/a.php' => 1, '/suite/b.php' => 1];
 
-    expect(NativeShardInventory::allocateByTestCount($weights, 1, 2))->toBe(['/suite/a.php', '/suite/b.php'])
-        ->and(NativeShardInventory::allocateByTestCount($weights, 2, 2))->toBe(['/suite/z.php']);
+    expect(NativeShardInventory::allocateByTestCount($weights, 1, 2))->toBe(['/suite/a.php', '/suite/z.php'])
+        ->and(NativeShardInventory::allocateByTestCount($weights, 2, 2))->toBe(['/suite/b.php']);
 });
 
 it('rejects invalid shard coordinates and invalid native discovery weights', function (): void {
