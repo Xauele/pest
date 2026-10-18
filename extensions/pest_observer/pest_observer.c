@@ -9,7 +9,7 @@
 #include "php.h"
 #include "zend_observer.h"
 #include "ext/standard/info.h"
-#include "TSRM/tsrm_virtual_cwd.h"
+#include "zend_virtual_cwd.h"
 #include <string.h>
 #include <sys/stat.h>
 
