@@ -1,0 +1,101 @@
+name: Zend Shadow TIA Differential Oracle
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shadow:
+    if: startsWith(github.head_ref, 'experiment/zend-native-shadow-oracle-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          tools: phpize, php-config, composer:v2
+          coverage: xdebug
+      - name: Install Pest and ParaTest
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Unavailable native observer must fail closed when explicitly requested
+        shell: bash
+        env:
+          XDEBUG_MODE: coverage
+          PEST_TIA_NATIVE_SHADOW: '1'
+        run: |
+          set -euo pipefail
+          set +e
+          php -r 'require "vendor/autoload.php"; (new Pest\Plugins\Tia\Recorder)->activate();' > /tmp/native-shadow-absent.log 2>&1
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -eq 0 ]; then
+            echo "::error::Native shadow silently turned off with its required extension absent"
+            exit 1
+          fi
+          grep -q 'requires the compiled pest_observer extension' /tmp/native-shadow-absent.log || { cat /tmp/native-shadow-absent.log; exit 1; }
+          echo 'NATIVE_SHADOW_MISSING_EXTENSION_FAIL_CLOSED=PASS'
+      - name: Compile the actual Zend C extension for this PHP ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd extensions/pest_observer
+          phpize
+          ./configure --enable-pest-observer --with-php-config="$(command -v php-config)"
+          make -j2
+          test -s modules/pest_observer.so
+          php -d extension="$(pwd)/modules/pest_observer.so" --ri pest_observer
+      - name: Install extension for child PHP workers without disabling Xdebug
+        shell: bash
+        run: |
+          set -euo pipefail
+          scan_dir="$RUNNER_TEMP/pest-native-shadow-ini"
+          mkdir -p "$scan_dir"
+          echo "extension=$GITHUB_WORKSPACE/extensions/pest_observer/modules/pest_observer.so" > "$scan_dir/99-pest-observer.ini"
+          echo "PHP_INI_SCAN_DIR=:$scan_dir" >> "$GITHUB_ENV"
+      - name: Verify combined Xdebug and native Zend C observers are live
+        shell: bash
+        env:
+          XDEBUG_MODE: coverage
+          PEST_TIA_NATIVE_SHADOW: '1'
+        run: |
+          set -euo pipefail
+          php -r 'if (!extension_loaded("pest_observer") || !extension_loaded("xdebug") || !in_array("coverage", xdebug_info("mode"), true)) {fwrite(STDERR, "Both native and coverage drivers must be active\n");exit(1);} echo "ZEND_SHADOW_TWO_INDEPENDENT_DRIVERS=PASS\n";'
+      - name: Per-test shadow differential and integrity controls, serial
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: coverage
+          PEST_TIA_NATIVE_SHADOW: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+          PAO_DISABLE: '1'
+        run: |
+          set -euo pipefail
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --colors=never > /tmp/native-shadow-serial.log 2>&1 || { cat /tmp/native-shadow-serial.log; exit 1; }
+          cat /tmp/native-shadow-serial.log
+          grep -Eq 'Tests:[[:space:]]+6 passed' /tmp/native-shadow-serial.log || exit 1
+          echo 'NATIVE_SHADOW_SERIAL_ORACLE=PASS'
+      - name: Per-test shadow differential and integrity controls, ParaTest workers
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: coverage
+          PEST_TIA_NATIVE_SHADOW: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+          PAO_DISABLE: '1'
+        run: |
+          set -euo pipefail
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --parallel --processes=2 --colors=never > /tmp/native-shadow-parallel.log 2>&1 || { cat /tmp/native-shadow-parallel.log; exit 1; }
+          cat /tmp/native-shadow-parallel.log
+          grep -Eq 'Tests:[[:space:]]+6 passed' /tmp/native-shadow-parallel.log || exit 1
+          echo 'NATIVE_SHADOW_PARATEST_ORACLE=PASS'
