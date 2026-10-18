@@ -18,6 +18,7 @@
 ZEND_BEGIN_MODULE_GLOBALS(pest_observer)
     zend_bool recording;
     zend_bool saw_dynamic_code;
+    zend_bool untracked_effect_risk;
     zend_string *root;
     zend_string *last_filename;
     HashTable files;
@@ -31,6 +32,7 @@ static void php_pest_observer_init_globals(zend_pest_observer_globals *g)
 {
     g->recording = 0;
     g->saw_dynamic_code = 0;
+    g->untracked_effect_risk = 0;
     g->root = NULL;
     g->last_filename = NULL;
 }
@@ -94,11 +96,64 @@ static void pest_observer_on_begin(zend_execute_data *execute_data)
     }
 }
 
+static void pest_observer_on_sensitive_internal_begin(zend_execute_data *execute_data)
+{
+    (void) execute_data;
+
+    if (PEST_OBSERVER_G(recording)) {
+        PEST_OBSERVER_G(untracked_effect_risk) = 1;
+    }
+}
+
 static zend_observer_fcall_handlers pest_observer_init(zend_execute_data *execute_data)
 {
-    if (execute_data->func != NULL && ZEND_USER_CODE(execute_data->func->type)) {
+    zend_function *function = execute_data->func;
+
+    if (function == NULL) {
+        return (zend_observer_fcall_handlers){NULL, NULL};
+    }
+
+    if (ZEND_USER_CODE(function->type)) {
         return (zend_observer_fcall_handlers){pest_observer_on_begin, NULL};
     }
+
+    /*
+     * These are only illustrative native builtins that can read input outside
+     * the PHP source graph. A hit is a risk flag, NOT a complete I/O inventory.
+     */
+    if (function->type == ZEND_INTERNAL_FUNCTION && function->common.function_name != NULL) {
+        zend_string *name = function->common.function_name;
+
+        if (zend_string_equals_literal_ci(name, "file_get_contents")
+            || zend_string_equals_literal_ci(name, "file_exists")
+            || zend_string_equals_literal_ci(name, "is_file")
+            || zend_string_equals_literal_ci(name, "is_dir")
+            || zend_string_equals_literal_ci(name, "is_readable")
+            || zend_string_equals_literal_ci(name, "is_writable")
+            || zend_string_equals_literal_ci(name, "stat")
+            || zend_string_equals_literal_ci(name, "lstat")
+            || zend_string_equals_literal_ci(name, "realpath")
+            || zend_string_equals_literal_ci(name, "readlink")
+            || zend_string_equals_literal_ci(name, "glob")
+            || zend_string_equals_literal_ci(name, "scandir")
+            || zend_string_equals_literal_ci(name, "opendir")
+            || zend_string_equals_literal_ci(name, "class_exists")
+            || zend_string_equals_literal_ci(name, "interface_exists")
+            || zend_string_equals_literal_ci(name, "trait_exists")
+            || zend_string_equals_literal_ci(name, "enum_exists")
+            || zend_string_equals_literal_ci(name, "function_exists")
+            || zend_string_equals_literal_ci(name, "defined")
+            || zend_string_equals_literal_ci(name, "fopen")
+            || zend_string_equals_literal_ci(name, "fread")
+            || zend_string_equals_literal_ci(name, "file")
+            || zend_string_equals_literal_ci(name, "readfile")
+            || zend_string_equals_literal_ci(name, "file_put_contents")
+            || zend_string_equals_literal_ci(name, "getenv")
+            || zend_string_equals_literal_ci(name, "curl_exec")) {
+            return (zend_observer_fcall_handlers){pest_observer_on_sensitive_internal_begin, NULL};
+        }
+    }
+
     return (zend_observer_fcall_handlers){NULL, NULL};
 }
 
@@ -154,6 +209,7 @@ PHP_FUNCTION(pest_observer_start)
     }
     zend_hash_clean(&PEST_OBSERVER_G(files));
     PEST_OBSERVER_G(saw_dynamic_code) = 0;
+    PEST_OBSERVER_G(untracked_effect_risk) = 0;
     PEST_OBSERVER_G(recording) = 1;
     RETURN_TRUE;
 }
@@ -182,6 +238,7 @@ PHP_FUNCTION(pest_observer_stop)
 
     add_assoc_zval(return_value, "files", &files);
     add_assoc_bool(return_value, "dynamic_code", PEST_OBSERVER_G(saw_dynamic_code));
+    add_assoc_bool(return_value, "untracked_effect_risk", PEST_OBSERVER_G(untracked_effect_risk));
     add_assoc_bool(return_value, "safe_to_skip_tests", 0);
     add_assoc_string(return_value, "scope", "function-entry-positive-evidence");
 
@@ -191,6 +248,7 @@ PHP_FUNCTION(pest_observer_stop)
         PEST_OBSERVER_G(last_filename) = NULL;
     }
     PEST_OBSERVER_G(saw_dynamic_code) = 0;
+    PEST_OBSERVER_G(untracked_effect_risk) = 0;
 }
 
 static const zend_function_entry pest_observer_functions[] = {
@@ -213,6 +271,7 @@ PHP_RINIT_FUNCTION(pest_observer)
 #endif
     PEST_OBSERVER_G(recording) = 0;
     PEST_OBSERVER_G(saw_dynamic_code) = 0;
+    PEST_OBSERVER_G(untracked_effect_risk) = 0;
     PEST_OBSERVER_G(root) = NULL;
     PEST_OBSERVER_G(last_filename) = NULL;
     zend_hash_init(&PEST_OBSERVER_G(files), 16, NULL, NULL, 0);

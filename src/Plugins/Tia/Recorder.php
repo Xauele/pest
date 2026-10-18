@@ -6,6 +6,7 @@ namespace Pest\Plugins\Tia;
 
 use Pest\TestSuite;
 use ReflectionClass;
+use RuntimeException;
 
 /**
  * @internal
@@ -44,8 +45,33 @@ final class Recorder
 
     private ?SourceScope $sourceScope = null;
 
+    private bool $nativeShadowEnabled = false;
+
+    private bool $nativeShadowActive = false;
+
+    /**
+     * @var array<string, list<array{
+     *     observed_files: list<string>, covered_files: list<string>,
+     *     coverage_only: list<string>, native_only: list<string>,
+     *     dynamic_code: bool, untracked_effect_risk: bool, safe_to_skip_tests: false
+     * }>>
+     */
+    private array $nativeShadowReports = [];
+
     public function activate(): void
     {
+        if (getenv('PEST_TIA_NATIVE_SHADOW') === '1') {
+            if (! NativeObserverBridge::available()) {
+                throw new RuntimeException('TIA native shadow mode requires the compiled pest_observer extension.');
+            }
+
+            if (! $this->driverAvailable()) {
+                throw new RuntimeException('TIA native shadow mode requires active PCOV or Xdebug coverage for independent comparison.');
+            }
+
+            $this->nativeShadowEnabled = true;
+        }
+
         $this->active = true;
         $this->captureCoverage = true;
     }
@@ -114,11 +140,28 @@ final class Recorder
         if ($this->driver === 'pcov') {
             \pcov\clear();
             \pcov\start();
+            $this->startNativeShadow();
 
             return;
         }
 
         \xdebug_start_code_coverage();
+        $this->startNativeShadow();
+    }
+
+    private function startNativeShadow(): void
+    {
+        if (! $this->nativeShadowEnabled) {
+            return;
+        }
+
+        $root = realpath(TestSuite::getInstance()->rootPath);
+
+        if ($root === false || ! NativeObserverBridge::start($root)) {
+            throw new RuntimeException('Could not start a canonical native shadow observation scope.');
+        }
+
+        $this->nativeShadowActive = true;
     }
 
     public function endTest(): void
@@ -131,6 +174,13 @@ final class Recorder
             $this->currentTestFile = null;
 
             return;
+        }
+
+        $observation = null;
+
+        if ($this->nativeShadowActive) {
+            $this->nativeShadowActive = false;
+            $observation = NativeObserverBridge::stop();
         }
 
         if ($this->driver === 'pcov') {
@@ -163,6 +213,12 @@ final class Recorder
             }
 
             $coveredFiles = $this->filesWithExecutedLines($data);
+        }
+
+        if ($observation !== null) {
+            $this->nativeShadowReports[$this->currentTestFile][] = NativeShadowComparison::compare(
+                $observation, $coveredFiles, $this->sourceScope(),
+            );
         }
 
         foreach ($coveredFiles as $sourceFile) {
@@ -252,6 +308,18 @@ final class Recorder
         }
 
         $this->perTestInertiaComponents[$this->currentTestFile][$component] = true;
+    }
+
+    /**
+     * @return array<string, list<array{
+     *     observed_files: list<string>, covered_files: list<string>,
+     *     coverage_only: list<string>, native_only: list<string>,
+     *     dynamic_code: bool, untracked_effect_risk: bool, safe_to_skip_tests: false
+     * }>>
+     */
+    public function nativeShadowReports(): array
+    {
+        return $this->nativeShadowReports;
     }
 
     /** @return array<string, array<int, string>> */
@@ -374,6 +442,13 @@ final class Recorder
 
     public function reset(): void
     {
+        if ($this->nativeShadowActive) {
+            $this->nativeShadowActive = false;
+            NativeObserverBridge::stop();
+        }
+
+        $this->nativeShadowEnabled = false;
+        $this->nativeShadowReports = [];
         $this->currentTestFile = null;
         $this->perTestFiles = [];
         $this->perTestTables = [];
