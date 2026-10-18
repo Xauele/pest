@@ -69,7 +69,6 @@ it('fails closed when a ParaTest worker collects fewer PHPUnit dataset rows than
         ->and($output)->toContain('Shard integrity failed: 1 missing and 0 unexpected test IDs');
 })->group('integration');
 
-
 it('attests native PHPT and PHPUnit tests across parallel shards', function (): void {
     foreach (['1/2', '2/2'] as $shard) {
         $process = new Process(

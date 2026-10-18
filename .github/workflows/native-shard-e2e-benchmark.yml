@@ -36,9 +36,9 @@ jobs:
           args=(bin/pest --configuration=phpunit.xml --parallel --processes=2 --shard=1/4 --exclude-group=integration --exclude-group=tia --colors=never)
           for mode in legacy native; do
             if [ "$mode" = native ]; then
-              env PEST_SHARD_NATIVE=1 php "\${args[@]}" > /dev/null
+              env PEST_SHARD_NATIVE=1 php "${args[@]}" > /dev/null
             else
-              env -u PEST_SHARD_NATIVE php "\${args[@]}" > /dev/null
+              env -u PEST_SHARD_NATIVE php "${args[@]}" > /dev/null
             fi
           done
           for round in 1 2 3; do
@@ -47,13 +47,13 @@ jobs:
             else
               modes=(legacy native)
             fi
-            for mode in "\${modes[@]}"; do
+            for mode in "${modes[@]}"; do
               if [ "$mode" = native ]; then
                 /usr/bin/time -o /tmp/native-shard-time.txt -f 'SHARD_BENCH elapsed_s=%e max_rss_kb=%M' \
-                  env PEST_SHARD_NATIVE=1 php "\${args[@]}" > /tmp/native-shard-out.txt
+                  env PEST_SHARD_NATIVE=1 php "${args[@]}" > /tmp/native-shard-out.txt
               else
                 /usr/bin/time -o /tmp/native-shard-time.txt -f 'SHARD_BENCH elapsed_s=%e max_rss_kb=%M' \
-                  env -u PEST_SHARD_NATIVE php "\${args[@]}" > /tmp/native-shard-out.txt
+                  env -u PEST_SHARD_NATIVE php "${args[@]}" > /tmp/native-shard-out.txt
               fi
               printf 'SHARD_BENCH mode=%s round=%s ' "$mode" "$round"
               cat /tmp/native-shard-time.txt
