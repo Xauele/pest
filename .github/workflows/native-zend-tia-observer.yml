@@ -26,11 +26,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq "php${{ matrix.php }}-dev" autoconf make gcc
           php -v | head -2
+          command -v phpize
+          command -v php-config
           phpize -v
           php-config --version
+          php-config --includes
+          test -f "$(php-config --include-dir)/main/php.h"
           [[ "$(php-config --version)" == "${{ matrix.php }}"* ]]
       - name: Compile shared C extension
         shell: bash
