@@ -61,7 +61,7 @@ final class Recorder
     public function activate(): void
     {
         if (getenv('PEST_TIA_NATIVE_SHADOW') === '1') {
-            if (! function_exists('pest_observer_start') || ! function_exists('pest_observer_stop')) {
+            if (! NativeObserverBridge::available()) {
                 throw new RuntimeException('TIA native shadow mode requires the compiled pest_observer extension.');
             }
 
@@ -157,7 +157,7 @@ final class Recorder
 
         $root = realpath(TestSuite::getInstance()->rootPath);
 
-        if ($root === false || ! call_user_func('pest_observer_start', $root)) {
+        if ($root === false || ! NativeObserverBridge::start($root)) {
             throw new RuntimeException('Could not start a canonical native shadow observation scope.');
         }
 
@@ -180,7 +180,7 @@ final class Recorder
 
         if ($this->nativeShadowActive) {
             $this->nativeShadowActive = false;
-            $observation = call_user_func('pest_observer_stop');
+            $observation = NativeObserverBridge::stop();
         }
 
         if ($this->driver === 'pcov') {
@@ -444,7 +444,7 @@ final class Recorder
     {
         if ($this->nativeShadowActive) {
             $this->nativeShadowActive = false;
-            call_user_func('pest_observer_stop');
+            NativeObserverBridge::stop();
         }
 
         $this->nativeShadowEnabled = false;
