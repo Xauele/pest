@@ -1912,6 +1912,7 @@
 
    PASS  Tests\Unit\Plugins\Shard\RunIntegrity
   ✓ it records only active runs and normalises generated Pest class names
+  ✓ it preserves exact native PHPUnit IDs for unrelated P-namespaced classes
   ✓ it detects missing and unexpected test IDs without relying on assertion counts
   ✓ it aggregates parallel worker evidence without duplicate classes
   ✓ it fails closed on corrupted worker evidence
@@ -2320,4 +2321,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1653 passed (4080 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1654 passed (4085 assertions)

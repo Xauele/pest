@@ -37,13 +37,25 @@ jobs:
           env -u PEST_SHARD_NATIVE php "${args[@]}" > /tmp/native-prefix-control.log 2>&1 || { cat /tmp/native-prefix-control.log; exit 1; }
           cat /tmp/native-prefix-control.log
           echo 'The unsharded control may also execute incidental bootstrapped test files; asserting native identity separately.'
-          if ! env PEST_SHARD_NATIVE=1 php "${args[@]}" --shard=1/1 > /tmp/native-prefix-probe.log 2>&1; then
+          if ! env PEST_SHARD_NATIVE=1 php "${args[@]}" --shard=1/1 --log-junit=/tmp/native-prefix-proof.xml > /tmp/native-prefix-probe.log 2>&1; then
             echo "::error::Native path failed on two distinct PHPUnit classes P\\NativeShardProof\\CollisionTest and NativeShardProof\\CollisionTest."
             cat /tmp/native-prefix-probe.log
             exit 1
           fi
           cat /tmp/native-prefix-probe.log
           grep -q '2 passed' /tmp/native-prefix-probe.log
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          cases = [(x.get('classname') or '', x.get('name') or '') for x in ET.parse('/tmp/native-prefix-proof.xml').iter('testcase')]
+          print('PREFIX_TEST_IDS=', cases)
+          if len(cases) != 2 or len(set(cases)) != 2:
+              raise SystemExit(f'Expected two distinct JUnit identities, got: {cases}')
+          classes = {cls for cls, name in cases}
+          if classes != {'P\\NativeShardProof\\CollisionTest', 'NativeShardProof\\CollisionTest'}:
+              raise SystemExit(f'Wrong JUnit classes: {classes}')
+          if {name for cls, name in cases} != {'test_identity'}:
+              raise SystemExit(f'Wrong JUnit test names: {cases}')
+          PY
           echo 'COUNTEREXAMPLE_P_NAMESPACE_CANONICAL_IDS=PASS'
 
   empty_shard:
