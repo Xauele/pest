@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.0/phpunit.xsd"
+         bootstrap="../../../vendor/autoload.php"
+         colors="false">
+  <testsuites>
+    <testsuite name="native-shard-skew">
+      <file>NativeShardSkewATest.php</file>
+      <file>NativeShardSkewBTest.php</file>
+      <file>NativeShardSkewCTest.php</file>
+      <file>NativeShardSkewDTest.php</file>
+    </testsuite>
+  </testsuites>
+</phpunit>
