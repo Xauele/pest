@@ -16,7 +16,7 @@ final class NativeShadowComparison
      * @return array{
      *     observed_files: list<string>, covered_files: list<string>,
      *     coverage_only: list<string>, native_only: list<string>,
-     *     dynamic_code: bool, safe_to_skip_tests: false
+     *     dynamic_code: bool, untracked_effect_risk: bool, safe_to_skip_tests: false
      * }
      */
     public static function compare(mixed $evidence, array $coveredFiles, SourceScope $scope): array
@@ -25,6 +25,7 @@ final class NativeShadowComparison
             || ($evidence['scope'] ?? null) !== 'function-entry-positive-evidence'
             || ($evidence['safe_to_skip_tests'] ?? null) !== false
             || ! is_bool($evidence['dynamic_code'] ?? null)
+            || ! is_bool($evidence['untracked_effect_risk'] ?? null)
             || ! isset($evidence['files'])
             || ! is_array($evidence['files'])
             || ! array_is_list($evidence['files'])) {
@@ -73,6 +74,7 @@ final class NativeShadowComparison
             'coverage_only' => $coverageOnly,
             'native_only' => $nativeOnly,
             'dynamic_code' => $evidence['dynamic_code'],
+            'untracked_effect_risk' => $evidence['untracked_effect_risk'],
             'safe_to_skip_tests' => false,
         ];
     }

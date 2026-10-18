@@ -53,7 +53,7 @@ final class Recorder
      * @var array<string, list<array{
      *     observed_files: list<string>, covered_files: list<string>,
      *     coverage_only: list<string>, native_only: list<string>,
-     *     dynamic_code: bool, safe_to_skip_tests: false
+     *     dynamic_code: bool, untracked_effect_risk: bool, safe_to_skip_tests: false
      * }>>
      */
     private array $nativeShadowReports = [];
@@ -314,7 +314,7 @@ final class Recorder
      * @return array<string, list<array{
      *     observed_files: list<string>, covered_files: list<string>,
      *     coverage_only: list<string>, native_only: list<string>,
-     *     dynamic_code: bool, safe_to_skip_tests: false
+     *     dynamic_code: bool, untracked_effect_risk: bool, safe_to_skip_tests: false
      * }>>
      */
     public function nativeShadowReports(): array

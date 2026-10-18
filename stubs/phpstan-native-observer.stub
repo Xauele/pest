@@ -12,6 +12,7 @@ function pest_observer_start(string $canonicalProjectRoot): bool {}
  * @return array{
  *     files: list<string>,
  *     dynamic_code: bool,
+ *     untracked_effect_risk: bool,
  *     safe_to_skip_tests: false,
  *     scope: 'function-entry-positive-evidence'
  * }

@@ -38,6 +38,7 @@ $first = pest_observer_stop();
 $check(in_array(__FILE__, $first['files'], true), 'Zend method entry file was not recorded');
 $check($first['safe_to_skip_tests'] === false, 'Observer must never prove safe omission');
 $check($first['dynamic_code'] === false, 'Ordinary method unexpectedly marked dynamic');
+$check($first['untracked_effect_risk'] === false, 'Pure PHP method incorrectly flagged for internal I/O');
 $check($first['scope'] === 'function-entry-positive-evidence', 'Unrecognized proof domain');
 echo "NATIVE_FUNCTION_ENTRY_CAPTURE=PASS\n";
 
@@ -102,6 +103,7 @@ try {
 
     $check($value === '{"permission":"admin"}', 'Data fixture read failed');
     $check(! in_array($dataFile, $observations['files'], true), 'Internal file input unexpectedly claimed by function-entry probe');
+    $check($observations['untracked_effect_risk'] === true, 'Internal file read did not raise a conservative native risk flag');
     $check($observations['safe_to_skip_tests'] === false, 'Native blind spot falsely authorized skipping');
     echo "NATIVE_DATA_DEPENDENCY_BLIND_SPOT_FAIL_CLOSED=PASS\n";
 } finally {

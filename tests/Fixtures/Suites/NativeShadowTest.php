@@ -30,6 +30,7 @@ it('captures actual Zend file entries alongside Xdebug coverage without changing
         ->and($reports[__FILE__])->toHaveCount(1)
         ->and($reports[__FILE__][0]['observed_files'])->toContain($source)
         ->and($reports[__FILE__][0]['covered_files'])->toContain($source)
+        ->and($reports[__FILE__][0]['untracked_effect_risk'])->toBeFalse()
         ->and($reports[__FILE__][0]['safe_to_skip_tests'])->toBeFalse()
         ->and($recorder->perTestFiles()[__FILE__])->toContain($source);
 
@@ -58,6 +59,7 @@ it('must keep unknown internal data I/O outside both file-code oracles', functio
 
         expect($contents)->toBe('{"permission":"admin"}')
             ->and($report['observed_files'])->not->toContain($dataFile)
+            ->and($report['untracked_effect_risk'])->toBeTrue()
             ->and($report['safe_to_skip_tests'])->toBeFalse();
     } finally {
         @unlink($dataFile);
@@ -72,6 +74,7 @@ it('detects deliberate oracle-only source coverage without certifying a skipped 
         'scope' => 'function-entry-positive-evidence',
         'files' => [],
         'dynamic_code' => false,
+        'untracked_effect_risk' => false,
         'safe_to_skip_tests' => false,
     ];
 
@@ -88,6 +91,7 @@ it('rejects malicious native claims of negative test-impact proof', function ():
         'scope' => 'function-entry-positive-evidence',
         'files' => [],
         'dynamic_code' => false,
+        'untracked_effect_risk' => false,
         'safe_to_skip_tests' => true,
     ];
 
@@ -101,6 +105,7 @@ it('rejects corrupt native evidence instead of emitting an empty green report', 
         'scope' => 'function-entry-positive-evidence',
         'files' => ['valid.php', 123],
         'dynamic_code' => false,
+        'untracked_effect_risk' => false,
         'safe_to_skip_tests' => false,
     ];
 

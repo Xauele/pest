@@ -61,6 +61,11 @@ jobs:
           mkdir -p "$scan_dir"
           echo "extension=$GITHUB_WORKSPACE/extensions/pest_observer/modules/pest_observer.so" > "$scan_dir/99-pest-observer.ini"
           echo "PHP_INI_SCAN_DIR=:$scan_dir" >> "$GITHUB_ENV"
+      - name: Native C ABI proof with internal I/O hazard detection
+        shell: bash
+        env:
+          XDEBUG_MODE: coverage
+        run: php extensions/pest_observer/tests/proof.php
       - name: Verify combined Xdebug and native Zend C observers are live
         shell: bash
         env:
