@@ -7,6 +7,7 @@ namespace Pest\Plugins\Shard;
 use Pest\TestSuite;
 use PHPUnit\Event\Code\Test;
 use PHPUnit\Event\Code\TestMethod;
+use ReflectionClass;
 use RuntimeException;
 use SplPriorityQueue;
 
@@ -34,14 +35,21 @@ final class NativeShardInventory
             }
 
             $file = $test->file();
-
             $class = $test->className();
 
-            if (str_starts_with($class, 'P\\') && class_exists($class, false) && property_exists($class, '__filename')) {
-                $original = $class::$__filename;
+            if (class_exists($class, false)) {
+                $classFile = (new ReflectionClass($class))->getFileName();
 
-                if (is_string($original) && $original !== '') {
-                    $file = $original;
+                if (is_string($classFile) && $classFile !== '') {
+                    $file = $classFile;
+                }
+
+                if (str_starts_with($class, 'P\\') && property_exists($class, '__filename')) {
+                    $original = $class::$__filename;
+
+                    if (is_string($original) && $original !== '') {
+                        $file = $original;
+                    }
                 }
             }
 
