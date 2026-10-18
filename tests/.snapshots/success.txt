@@ -1285,6 +1285,11 @@
   ✓ a "describe" group of tests → it is a test
   ✓ a "describe" group of tests → it is a higher order message test
 
+   PASS  Tests\Features\NativeShardDelegation
+  ✓ it uses the native ParaTest suite inventory for Pest and PHPUnit sharding with ('ShardIntegrity.xml', '1 passed')
+  ✓ it uses the native ParaTest suite inventory for Pest and PHPUnit sharding with ('ShardIntegrityPest.xml', '1 passed')
+  ✓ it fails closed when a ParaTest worker collects fewer PHPUnit dataset rows than the parent
+
    PASS  Tests\Features\Note
   ✓ it may have a static note
   // This is before each static note
@@ -2305,4 +2310,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1642 passed (3620 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1645 passed (3638 assertions)
