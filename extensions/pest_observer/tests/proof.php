@@ -84,3 +84,31 @@ try {
 } finally {
     @unlink($fixture);
 }
+
+/*
+ * A file read performed entirely by an internal PHP function is not a
+ * userland function-entry event. This is a deliberate negative capability
+ * proof: such output must NEVER authorize TIA to skip downstream tests.
+ */
+$dataFile = tempnam(sys_get_temp_dir(), 'pest-native-io-');
+if (! is_string($dataFile)) {
+    throw new RuntimeException('Could not allocate native I/O negative fixture');
+}
+
+try {
+    file_put_contents($dataFile, '{"permission":"admin"}');
+
+    if (! pest_observer_start($root)) {
+        throw new RuntimeException('Failed to start data-file blind-spot probe');
+    }
+
+    $value = file_get_contents($dataFile);
+    $observations = pest_observer_stop();
+
+    $check($value === '{"permission":"admin"}', 'Data fixture read failed');
+    $check(! in_array($dataFile, $observations['files'], true), 'Internal file input unexpectedly claimed by function-entry probe');
+    $check($observations['safe_to_skip_tests'] === false, 'Native blind spot falsely authorized skipping');
+    echo "NATIVE_DATA_DEPENDENCY_BLIND_SPOT_FAIL_CLOSED=PASS\n";
+} finally {
+    @unlink($dataFile);
+}
