@@ -123,7 +123,9 @@ final class TestCaseFactory
         $baseClass = sprintf('\%s', $this->class);
 
         if (trim($className) === '') {
-            $className = 'InvalidTestName'.Str::random();
+            // A stable name lets independent PHPUnit discovery and ParaTest workers
+            // identify the same file without introducing random test IDs.
+            $className = 'InvalidTestName'.substr(hash('sha256', $realpath !== '' ? $realpath : $this->filename), 0, 24);
         } elseif (! Str::isValidClassName($className)) {
             throw InvalidTestClassName::fromClassName($this->filename, $className);
         }
