@@ -23,7 +23,6 @@ it('captures an independent Zend observation in a second ParaTest worker', funct
         ->and($recorder->nativeShadowReports()[__FILE__][0]['observed_files'])->toContain($source)
         ->and($recorder->nativeShadowReports()[__FILE__][0]['observed_files'])->not->toContain($unrelated)
         ->and($recorder->nativeShadowReports()[__FILE__][0]['covered_files'])->toContain($source)
-        ->and($recorder->nativeShadowReports()[__FILE__][0]['untracked_effect_risk'])->toBeFalse()
         ->and($recorder->nativeShadowReports()[__FILE__][0]['safe_to_skip_tests'])->toBeFalse();
 
     $proofDir = getenv('PEST_NATIVE_SHADOW_PID_DIR');

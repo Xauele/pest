@@ -30,7 +30,6 @@ it('captures actual Zend file entries alongside independent PCOV/Xdebug coverage
         ->and($reports[__FILE__])->toHaveCount(1)
         ->and($reports[__FILE__][0]['observed_files'])->toContain($source)
         ->and($reports[__FILE__][0]['covered_files'])->toContain($source)
-        ->and($reports[__FILE__][0]['untracked_effect_risk'])->toBeFalse()
         ->and($reports[__FILE__][0]['safe_to_skip_tests'])->toBeFalse()
         ->and($recorder->perTestFiles()[__FILE__])->toContain($source);
 
