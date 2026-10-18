@@ -9,6 +9,8 @@ use Pest\Contracts\Plugins\HandlesArguments;
 use Pest\Contracts\Plugins\Terminable;
 use Pest\Exceptions\InvalidOption;
 use Pest\Plugins\Shard\RunIntegrity;
+use Pest\Subscribers\EnsureNativeShardInventoryFiltered;
+use Pest\Subscribers\EnsureNativeShardInventoryLoaded;
 use Pest\Subscribers\EnsureShardTestIsFinished;
 use Pest\Subscribers\EnsureShardTestIsSkipped;
 use Pest\Subscribers\EnsureShardTimingFinished;
@@ -128,6 +130,8 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             && ! Parallel::isWorker()
             && (in_array('--parallel', $arguments, true) || in_array('-p', $arguments, true))
             && $this->loadShardsFile() === null) {
+            Event\Facade::instance()->registerSubscriber(new EnsureNativeShardInventoryLoaded);
+            Event\Facade::instance()->registerSubscriber(new EnsureNativeShardInventoryFiltered);
             Parallel::setGlobal('NATIVE_SHARD_FILE_ALLOCATION', "$index/$total");
 
             return $arguments;
@@ -434,8 +438,12 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
     /**
      * @internal This is an opt-in native ParaTest experiment only.
      */
-    public static function recordNativeFileAllocation(int $index, int $total, int $assigned, int $discovered): void
+    public static function recordNativeFileAllocation(int $index, int $total, int $assigned, int $discovered, array $expected): void
     {
+        self::$expectedTestIds = $expected;
+        self::$integrityRunId = bin2hex(random_bytes(16));
+        Parallel::setGlobal(self::INTEGRITY_GLOBAL, self::$integrityRunId);
+
         self::$shard = [
             'index' => $index,
             'total' => $total,

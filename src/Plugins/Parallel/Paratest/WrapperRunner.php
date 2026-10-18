@@ -18,6 +18,7 @@ use Pest\Plugins\Tia;
 use Pest\Result;
 use Pest\Plugins\Parallel;
 use Pest\Plugins\Shard;
+use Pest\Plugins\Shard\NativeShardInventory;
 use Pest\TestSuite;
 use PHPUnit\Event\Facade as EventFacade;
 use PHPUnit\Event\Test\AfterLastTestMethodFailed;
@@ -683,7 +684,8 @@ final class WrapperRunner implements RunnerInterface
                 }
             }
 
-            Shard::recordNativeFileAllocation($index, $total, count($selected), count($allFiles));
+            $expected = NativeShardInventory::selectedIds($selected);
+            Shard::recordNativeFileAllocation($index, $total, count($selected), count($allFiles), $expected);
 
             return $selected;
         }
