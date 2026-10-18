@@ -261,3 +261,71 @@ describe('output format', function (): void {
         expect($a)->toBe($b);
     });
 });
+
+describe('observable source semantics', function (): void {
+    it('observable PHPDoc annotations cannot share the same TIA fingerprint', function (): void {
+        $before = "<?php\n/** @permission admin */\nfunction accessPolicy() {}";
+        $after = "<?php\n/** @permission guest */\nfunction accessPolicy() {}";
+
+        expect(ContentHash::ofContent('app/Policy.php', $before))
+            ->not->toBe(ContentHash::ofContent('app/Policy.php', $after));
+    });
+
+    it('observable PHP line numbers cannot share the same TIA fingerprint', function (): void {
+        $before = "<?php\nreturn __LINE__;\n";
+        $after = "<?php\n\nreturn __LINE__;\n";
+
+        expect(ContentHash::ofContent('app/Caller.php', $before))
+            ->not->toBe(ContentHash::ofContent('app/Caller.php', $after));
+    });
+
+    it('observable Blade text whitespace cannot share the same TIA fingerprint', function (): void {
+        $before = '<p>Price:  100</p>';
+        $after = '<p>Price: 100</p>';
+
+        expect(ContentHash::ofContent('resources/views/checkout.blade.php', $before))
+            ->not->toBe(ContentHash::ofContent('resources/views/checkout.blade.php', $after));
+    });
+
+    it('observable TypeScript directives cannot share the same TIA fingerprint', function (): void {
+        $before = "// @ts-check\nconst quantity = 1;";
+        $after = 'const quantity = 1;';
+
+        expect(ContentHash::ofContent('resources/js/checkout.ts', $before))
+            ->not->toBe(ContentHash::ofContent('resources/js/checkout.ts', $after));
+    });
+
+    it('observable Vite source pragmas cannot share the same TIA fingerprint', function (): void {
+        $before = "/* @vite-ignore */\nimport(component);";
+        $after = 'import(component);';
+
+        expect(ContentHash::ofContent('resources/js/Pages/Orders.vue', $before))
+            ->not->toBe(ContentHash::ofContent('resources/js/Pages/Orders.vue', $after));
+    });
+
+    it('observable source changes survive last-run tree filtering', function (): void {
+        $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'pest-tia-observable-'.bin2hex(random_bytes(8));
+        mkdir($root.'/app', 0755, true);
+        $path = $root.'/app/Permission.php';
+        $before = "<?php\n/** @permission admin */\nclass Permission {}";
+        $after = "<?php\n/** @permission guest */\nclass Permission {}";
+
+        try {
+            file_put_contents($path, $before);
+            $previous = ContentHash::of($path);
+            expect($previous)->toBeString();
+
+            file_put_contents($path, $after);
+
+            $changes = new \Pest\Plugins\Tia\ChangedFiles($root);
+            expect($changes->filterUnchangedSinceLastRun(
+                ['app/Permission.php'],
+                ['app/Permission.php' => $previous],
+            ))->toBe(['app/Permission.php']);
+        } finally {
+            @unlink($path);
+            @rmdir($root.'/app');
+            @rmdir($root);
+        }
+    });
+});
