@@ -122,3 +122,38 @@ it('rejects an unavailable native shadow driver rather than silently turning off
         $recorder->activate();
     })->toThrow(RuntimeException::class);
 })->group('native-shadow-proof');
+
+afterEach(function (): void {
+    \Tests\Fixtures\Tia\Project::destroyAll();
+});
+
+it('keeps actual Git-based TIA replay and impacted-test sets identical under native shadow', function (array $arguments): void {
+    $control = \Tests\Fixtures\Tia\Project::make('master');
+    $shadow = \Tests\Fixtures\Tia\Project::make('master');
+
+    foreach ([$control, $shadow] as $project) {
+        $project->seed('master');
+
+        $source = (string) file_get_contents($project->path('app/Greeter.php'));
+        $before = "return sprintf('Hello, %s!', \$name);";
+        $after = "return 'Hello, '.\$name.'!';";
+        $modified = str_replace($before, $after, $source);
+
+        expect($modified)->not->toBe($source);
+        $project->write('app/Greeter.php', $modified);
+    }
+
+    $old = $control->pestWithEnvironment($control->path, ['PEST_TIA_NATIVE_SHADOW' => false], '--tia', ...$arguments);
+    $native = $shadow->pest('--tia', ...$arguments);
+
+    expect($old->exitCode)->toBe(0, $old->describe())
+        ->and($native->exitCode)->toBe(0, $native->describe())
+        ->and($native->affected())->toBe($old->affected(), $native->describe())
+        ->and($native->replayed())->toBe($old->replayed(), $native->describe())
+        ->and($native->affected())->toBe(2, $native->describe())
+        ->and($native->replayed())->toBe(4, $native->describe())
+        ->and($native->tally())->toContain('6 passed');
+})->with([
+    'sequential' => [[]],
+    'ParaTest' => [['--parallel', '--processes=2']],
+])->group('native-shadow-proof');
