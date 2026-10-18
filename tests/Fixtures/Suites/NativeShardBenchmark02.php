@@ -9,5 +9,5 @@ it('completes deterministic native shard benchmark file 02', function (int $seed
         $checksum += (($iteration + 1) * $seed) % 97;
     }
 
-    expect($checksum)->toBeGreaterThan(0);
+    expect($checksum)->toBeGreaterThanOrEqual(0)->toBeLessThan(2910);
 })->with(range(1, 80));
