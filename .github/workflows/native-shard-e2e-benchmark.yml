@@ -23,6 +23,25 @@ jobs:
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
         run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Diagnose native PHPUnit discovery (fork experiment)
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+        run: |
+          set -uo pipefail
+          for variant in root unit unit_directory; do
+            args=(bin/pest --configuration=phpunit.xml --no-tia --list-test-ids)
+            if [[ "$variant" == unit ]]; then args+=(tests/Unit); fi
+            if [[ "$variant" == unit_directory ]]; then args+=(tests/Unit --test-directory=tests); fi
+            printf '\nDISCOVERY variant=%s\n' "$variant"
+            php "${args[@]}" > /tmp/native-discovery-output.txt 2>&1
+            result=$?
+            printf 'DISCOVERY exit=%s bytes=%s lines=%s test_ids=%s\n' "$result" "$(wc -c < /tmp/native-discovery-output.txt)" "$(wc -l < /tmp/native-discovery-output.txt)" "$(grep -c '::' /tmp/native-discovery-output.txt || true)"
+            sed -n '1,15p' /tmp/native-discovery-output.txt
+          done
       - name: Measure whole Pest shard, not a microbenchmark
         shell: bash
         env:
