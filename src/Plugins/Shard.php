@@ -542,6 +542,12 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
         $observed = RunIntegrity::observed();
 
+        if (RunIntegrity::hasDuplicateObservations() && $exitCode === 0) {
+            $this->output->writeln('  <fg=red;options=bold>ERROR</> Shard integrity failed: duplicate test completion.');
+
+            return 1;
+        }
+
         if (self::$integrityRunId !== null) {
             $workers = RunIntegrity::collectWorkerEvidence(self::$integrityRunId);
 

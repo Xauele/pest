@@ -87,3 +87,35 @@ it('rejects duplicated test execution evidence from independent workers', functi
     expect(RunIntegrity::collectWorkerEvidence($runId))->toBeNull()
         ->and(file_exists($secondPath))->toBeFalse();
 })->group('integration');
+
+
+it('rejects duplicate completions inside a single worker using the native finished event', function (): void {
+    RunIntegrity::activate();
+    RunIntegrity::observeFinished('P\Tests\Duplicated::test_case');
+    RunIntegrity::observeFinished('P\Tests\Duplicated::test_case');
+
+    expect(RunIntegrity::hasDuplicateObservations())->toBeTrue()
+        ->and(RunIntegrity::observed())->toBe(['Tests\Duplicated::test_case' => true]);
+
+    $runId = bin2hex(random_bytes(16));
+    RunIntegrity::writeWorkerEvidence($runId);
+
+    expect(RunIntegrity::collectWorkerEvidence($runId))->toBeNull();
+});
+
+it('accepts one native skipped and one finished event for the same execution', function (): void {
+    RunIntegrity::activate();
+    RunIntegrity::observeSkipped('P\Tests\Skipped::test_case');
+    RunIntegrity::observeFinished('P\Tests\Skipped::test_case');
+
+    expect(RunIntegrity::hasDuplicateObservations())->toBeFalse()
+        ->and(RunIntegrity::observed())->toBe(['Tests\Skipped::test_case' => true]);
+});
+
+it('rejects repeated skipped notifications for the same native test', function (): void {
+    RunIntegrity::activate();
+    RunIntegrity::observeSkipped('Tests\RepeatedSkipped::test_case');
+    RunIntegrity::observeSkipped('Tests\RepeatedSkipped::test_case');
+
+    expect(RunIntegrity::hasDuplicateObservations())->toBeTrue();
+});
