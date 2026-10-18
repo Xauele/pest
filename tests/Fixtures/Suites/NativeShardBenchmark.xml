@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.0/phpunit.xsd"
+         bootstrap="../../../vendor/autoload.php"
+         colors="false">
+  <testsuites>
+    <testsuite name="native-shard-benchmark">
+      <file>NativeShardBenchmark01.php</file>
+      <file>NativeShardBenchmark02.php</file>
+      <file>NativeShardBenchmark03.php</file>
+      <file>NativeShardBenchmark04.php</file>
+      <file>NativeShardBenchmark05.php</file>
+      <file>NativeShardBenchmark06.php</file>
+      <file>NativeShardBenchmark07.php</file>
+      <file>NativeShardBenchmark08.php</file>
+      <file>ShardIntegrityPhpUnitTest.php</file>
+    </testsuite>
+  </testsuites>
+</phpunit>

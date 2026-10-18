@@ -23,25 +23,19 @@ jobs:
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
         run: composer update --prefer-stable --no-interaction --no-progress
-      - name: Diagnose native PHPUnit discovery (fork experiment)
+      - name: Verify benchmark suite inventory
         shell: bash
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
           XDEBUG_MODE: off
           PAO_DISABLE: '1'
-          COLLISION_PRINTER: DefaultPrinter
         run: |
-          set -uo pipefail
-          for variant in root filtered; do
-            args=(bin/pest --configuration=phpunit.xml --no-tia --list-test-ids)
-            if [[ "$variant" == filtered ]]; then args+=(--exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test); fi
-            printf '\nDISCOVERY variant=%s\n' "$variant"
-            php "${args[@]}" > /tmp/native-discovery-output.txt 2>&1
-            result=$?
-            printf 'DISCOVERY exit=%s bytes=%s lines=%s test_ids=%s\n' "$result" "$(wc -c < /tmp/native-discovery-output.txt)" "$(wc -l < /tmp/native-discovery-output.txt)" "$(grep -c '::' /tmp/native-discovery-output.txt || true)"
-            sed -n '1,15p' /tmp/native-discovery-output.txt
-          done
-      - name: Measure whole Pest shard, not a microbenchmark
+          set -euo pipefail
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShardBenchmark.xml --no-tia --list-test-ids > /tmp/native-benchmark-ids.txt
+          ids=$(grep -c '::' /tmp/native-benchmark-ids.txt || true)
+          echo "BENCHMARK_DISCOVERED_IDS=$ids"
+          if [[ "$ids" -lt 346 ]]; then echo '::error::Synthetic benchmark test inventory was incomplete'; exit 1; fi
+      - name: Measure end-to-end CLI shards on weighted Pest and PHPUnit suite
         shell: bash
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
@@ -54,14 +48,14 @@ jobs:
           mkdir -p /tmp/pest-shard-bench
           metrics=/tmp/pest-shard-bench/metrics.csv
           printf 'mode,round,shard,elapsed_seconds,peak_rss_kb\n' > "$metrics"
-          args=(bin/pest --configuration=phpunit.xml --parallel --processes=2 --exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test --colors=never)
+          args=(bin/pest --configuration=tests/Fixtures/Suites/NativeShardBenchmark.xml --parallel --processes=2 --colors=never)
           run_one() {
             local mode="$1" round="$2" shard="$3"
             local out="/tmp/pest-shard-bench/${mode}-${round}-${shard}.log"
             local timings="/tmp/pest-shard-bench/${mode}-${round}-${shard}.time"
             local runner=(env -u PEST_SHARD_NATIVE)
             if [[ "$mode" == native ]]; then runner=(env PEST_SHARD_NATIVE=1); fi
-            if ! /usr/bin/time -o "$timings" -f '%e,%M' "${runner[@]}" php "${args[@]}" "--shard=${shard}/4" > "$out" 2>&1; then
+            if ! /usr/bin/time -o "$timings" -f '%e,%M' "${runner[@]}" php "${args[@]}" "--shard=${shard}/4" "--log-junit=${out%.log}.xml" > "$out" 2>&1; then
               echo "::error::Shard benchmark failed: mode=${mode}, round=${round}, shard=${shard}"
               tail -n 120 "$out"
               exit 1
@@ -90,11 +84,12 @@ jobs:
           from collections import defaultdict
           from pathlib import Path
           from statistics import median
+          import xml.etree.ElementTree as ET
 
           root = Path('/tmp/pest-shard-bench')
           rows = list(csv.DictReader((root / 'metrics.csv').open()))
           rounds = defaultdict(dict)
-          signatures = {}
+          all_test_ids = {}
           for row in rows:
               if row['round'] == 'warmup':
                   continue
@@ -104,21 +99,36 @@ jobs:
               if not summaries:
                   raise SystemExit(f'Missing test summary: {mode}, {run}, {shard}')
               counts = dict((name, int(count)) for count, name in re.findall(r'(\d+)\s+(deprecated|failed|warnings?|incomplete|notices?|todos?|skipped|passed)', summaries[-1]))
-              rounds[(mode, run)][shard] = (float(row['elapsed_seconds']), int(row['peak_rss_kb']), counts)
+              junit = root / f'{mode}-{run}-{shard}.xml'
+              if not junit.is_file():
+                  raise SystemExit(f'JUnit evidence missing: {junit}')
+              tests = [(case.get('classname') or '', case.get('name') or '') for case in ET.parse(junit).iter('testcase')]
+              if not tests or len(set(tests)) != len(tests):
+                  raise SystemExit(f'JUnit identity missing or duplicated: mode={mode}, run={run}, shard={shard}')
+              rounds[(mode, run)][shard] = (float(row['elapsed_seconds']), int(row['peak_rss_kb']), counts, set(tests))
 
           for run in (1, 2, 3):
               totals = {}
+              unique_test_ids = {}
               for mode in ('legacy', 'native'):
                   shard_results = rounds[(mode, run)]
                   if set(shard_results) != {1, 2, 3, 4}:
                       raise SystemExit(f'Incomplete benchmark round: {mode} / {run}')
                   total_counts = defaultdict(int)
-                  for _, _, counts in shard_results.values():
+                  seen = set()
+                  for _, _, counts, test_ids in shard_results.values():
+                      if seen.intersection(test_ids):
+                          raise SystemExit(f'Duplicate JUnit identity across shards: mode={mode}, run={run}')
+                      seen.update(test_ids)
                       for label, value in counts.items():
                           total_counts[label] += value
                   totals[mode] = dict(total_counts)
+                  unique_test_ids[mode] = seen
               if totals['legacy'] != totals['native']:
                   raise SystemExit(f'Different test outcomes, cannot benchmark fairly: round={run}, legacy={totals["legacy"]}, native={totals["native"]}')
+              if unique_test_ids['legacy'] != unique_test_ids['native']:
+                  raise SystemExit(f'Missing or unexpected JUnit test IDs: run={run}, missing={len(unique_test_ids["legacy"] - unique_test_ids["native"])}, unexpected={len(unique_test_ids["native"] - unique_test_ids["legacy"])}')
+              print(f'SHARD_BENCH_IDS round={run} count={len(unique_test_ids["native"])} parity=PASS')
 
           for mode in ('legacy', 'native'):
               maxima = [max(rounds[(mode, run)][shard][0] for shard in range(1, 5)) for run in (1, 2, 3)]
