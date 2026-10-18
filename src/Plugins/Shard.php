@@ -121,6 +121,18 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             $arguments,
         )));
 
+        // Experimental native dispatch: reuse ParaTest's already-loaded SuiteLoader
+        // instead of launching an entire extra PHP process to list test IDs.
+        // Preserve the proven legacy path for time-balanced allocations.
+        if (getenv('PEST_SHARD_NATIVE') === '1'
+            && ! Parallel::isWorker()
+            && (in_array('--parallel', $arguments, true) || in_array('-p', $arguments, true))
+            && $this->loadShardsFile() === null) {
+            Parallel::setGlobal('NATIVE_SHARD_FILE_ALLOCATION', "$index/$total");
+
+            return $arguments;
+        }
+
         /** @phpstan-ignore-next-line */
         $tests = $this->allTests($arguments);
 
@@ -417,6 +429,19 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
                 $maxLength
             ));
         }
+    }
+
+    /**
+     * @internal This is an opt-in native ParaTest experiment only.
+     */
+    public static function recordNativeFileAllocation(int $index, int $total, int $assigned, int $discovered): void
+    {
+        self::$shard = [
+            'index' => $index,
+            'total' => $total,
+            'testsRan' => $assigned,
+            'testsCount' => $discovered,
+        ];
     }
 
     public function addOutput(int $exitCode): int

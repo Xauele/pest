@@ -16,6 +16,8 @@ use ParaTest\WrapperRunner\SuiteLoader;
 use ParaTest\WrapperRunner\WrapperWorker;
 use Pest\Plugins\Tia;
 use Pest\Result;
+use Pest\Plugins\Parallel;
+use Pest\Plugins\Shard;
 use Pest\TestSuite;
 use PHPUnit\Event\Facade as EventFacade;
 use PHPUnit\Event\Test\AfterLastTestMethodFailed;
@@ -658,7 +660,31 @@ final class WrapperRunner implements RunnerInterface
             }
         }
 
-        return array_keys($files);
+        $native = Parallel::getGlobal('NATIVE_SHARD_FILE_ALLOCATION');
+        $allFiles = array_keys($files);
+
+        if (is_string($native) && preg_match('/^(\\d+)\\/(\\d+)$/', $native, $matches) === 1) {
+            $index = (int) $matches[1];
+            $total = (int) $matches[2];
+
+            if ($index < 1 || $total < 1 || $index > $total) {
+                throw new RuntimeException('Invalid native ParaTest shard configuration.');
+            }
+
+            $selected = [];
+
+            foreach ($allFiles as $position => $filename) {
+                if ($position % $total === $index - 1) {
+                    $selected[] = $filename;
+                }
+            }
+
+            Shard::recordNativeFileAllocation($index, $total, count($selected), count($allFiles));
+
+            return $selected;
+        }
+
+        return $allFiles;
     }
 
     private function shouldIncludeBootstrappedTestFile(string $filename): bool
