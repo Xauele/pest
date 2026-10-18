@@ -85,11 +85,8 @@ try {
     @unlink($fixture);
 }
 
-/*
- * A file read performed entirely by an internal PHP function is not a
- * userland function-entry event. This is a deliberate negative capability
- * proof: such output must NEVER authorize TIA to skip downstream tests.
- */
+// Internal file reads have no user-function entry to observe.
+// This negative proof must never be used to authorize skipping tests.
 $dataFile = tempnam(sys_get_temp_dir(), 'pest-native-io-');
 if (! is_string($dataFile)) {
     throw new RuntimeException('Could not allocate native I/O negative fixture');
