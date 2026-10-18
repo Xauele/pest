@@ -87,7 +87,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      */
     public function handleArguments(array $arguments): array
     {
-        if (Parallel::isWorker()) {
+        if (self::isDirectParallelWorker()) {
             $runId = Parallel::getGlobal(self::INTEGRITY_GLOBAL);
 
             if (is_string($runId)) {
@@ -499,7 +499,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
     public function terminate(): void
     {
-        if (Parallel::isWorker() && self::$integrityRunId !== null) {
+        if (self::isDirectParallelWorker() && self::$integrityRunId !== null) {
             RunIntegrity::writeWorkerEvidence(self::$integrityRunId);
         }
 
@@ -524,6 +524,24 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         }
 
         $this->writeTimings($timings);
+    }
+
+    private static function isDirectParallelWorker(): bool
+    {
+        if (! Parallel::isWorker()) {
+            return false;
+        }
+
+        $script = $_SERVER['SCRIPT_FILENAME'] ?? null;
+
+        if (! is_string($script)) {
+            return false;
+        }
+
+        $scriptPath = realpath($script);
+        $workerPath = realpath(dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'bin'.DIRECTORY_SEPARATOR.'worker.php');
+
+        return $scriptPath !== false && $workerPath !== false && $scriptPath === $workerPath;
     }
 
     private function registerIntegritySubscribers(bool $preserveRawTestIds = false): void
