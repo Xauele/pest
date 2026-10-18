@@ -138,7 +138,7 @@ final class NativeShardInventory
             return [];
         }
 
-        /** @var SplPriorityQueue<int, array{int, int}> $queue */
+        /** @var SplPriorityQueue<array{int, int}, int> $queue */
         $queue = new SplPriorityQueue;
         $queue->setExtractFlags(SplPriorityQueue::EXTR_DATA);
 
