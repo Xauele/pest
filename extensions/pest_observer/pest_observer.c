@@ -9,7 +9,9 @@
 #include "php.h"
 #include "zend_observer.h"
 #include "ext/standard/info.h"
+#include "TSRM/tsrm_virtual_cwd.h"
 #include <string.h>
+#include <sys/stat.h>
 
 #define PHP_PEST_OBSERVER_VERSION "0.1.0"
 
@@ -111,6 +113,8 @@ PHP_FUNCTION(pest_observer_start)
 {
     zend_string *root;
     size_t len;
+    char resolved[MAXPATHLEN];
+    struct stat mode;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
         Z_PARAM_STR(root)
@@ -126,6 +130,18 @@ PHP_FUNCTION(pest_observer_start)
     len = ZSTR_LEN(root);
     while (len > 1 && ZSTR_VAL(root)[len - 1] == '/') {
         len--;
+    }
+
+    /*
+     * A lexically absolute path is not necessarily a canonical directory.
+     * Fail rather than silently producing an incomplete dependency inventory.
+     */
+    if (VCWD_REALPATH(ZSTR_VAL(root), resolved) == NULL
+        || strlen(resolved) != len
+        || memcmp(resolved, ZSTR_VAL(root), len) != 0
+        || VCWD_STAT(ZSTR_VAL(root), &mode) != 0
+        || !S_ISDIR(mode.st_mode)) {
+        RETURN_FALSE;
     }
 
     if (PEST_OBSERVER_G(root) != NULL) {

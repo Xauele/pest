@@ -59,6 +59,8 @@ $check($dynamic['safe_to_skip_tests'] === false, 'Unsafe dynamic run claims proo
 echo "NATIVE_EVAL_FAIL_CLOSED=PASS\n";
 
 $check(! pest_observer_start('relative/root'), 'Relative project root was accepted');
+$check(! pest_observer_start($root.'/..'), 'Noncanonical project root was accepted');
+$check(! pest_observer_start(__FILE__), 'A regular file was accepted as project root');
 try {
     pest_observer_stop();
     throw new RuntimeException('Unbalanced stop unexpectedly succeeded');
