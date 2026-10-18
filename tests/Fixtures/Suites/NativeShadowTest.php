@@ -117,6 +117,8 @@ it('rejects an unavailable native shadow driver rather than silently turning off
         return;
     }
 
-    expect(fn (): Recorder => tap(new Recorder, fn (Recorder $recorder): mixed => $recorder->activate()))
-        ->toThrow(RuntimeException::class);
+    expect(function (): void {
+        $recorder = new Recorder;
+        $recorder->activate();
+    })->toThrow(RuntimeException::class);
 });
