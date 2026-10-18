@@ -49,9 +49,6 @@ final class NativeShardInventory
     }
 
     /**
-     * Keep the native PHPUnit suite as the authoritative set of runnable files.
-     * Bootstrapped Pest helpers must not silently expand a configured suite.
-     *
      * @param  list<string>  $available
      * @return list<string>
      */

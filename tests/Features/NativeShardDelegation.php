@@ -43,7 +43,6 @@ it('uses the native ParaTest suite inventory for Pest and PHPUnit sharding', fun
     ['ShardIntegrityPest.xml', '1 passed'],
 ])->group('integration');
 
-
 it('fails closed when a ParaTest worker collects fewer PHPUnit dataset rows than the parent', function (): void {
     $process = new Process(
         [
