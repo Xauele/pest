@@ -113,6 +113,27 @@ final class NativeShardInventory
     }
 
     /**
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>
+     */
+    public static function allocateInDiscoveryOrder(array $available, int $index, int $total): array
+    {
+        if ($total < 1 || $index < 1 || $index > $total) {
+            throw new RuntimeException('Invalid native shard index or total.');
+        }
+
+        $selected = [];
+
+        foreach ($available as $position => $filename) {
+            if ($position % $total === $index - 1) {
+                $selected[] = $filename;
+            }
+        }
+
+        return $selected;
+    }
+
+    /**
      * @param  array<non-empty-string, int>  $testCounts
      * @return list<non-empty-string>
      */

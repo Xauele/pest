@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 use Pest\Plugins\Shard\NativeShardInventory;
 
+it('preserves stable discovery-order allocation without assuming test counts predict duration', function (): void {
+    $files = ['/suite/a.php', '/suite/b.php', '/suite/c.php', '/suite/d.php'];
+
+    expect(NativeShardInventory::allocateInDiscoveryOrder($files, 1, 2))->toBe(['/suite/a.php', '/suite/c.php'])
+        ->and(NativeShardInventory::allocateInDiscoveryOrder($files, 2, 2))->toBe(['/suite/b.php', '/suite/d.php'])
+        ->and(NativeShardInventory::allocateInDiscoveryOrder($files, 5, 8))->toBeEmpty()
+        ->and(fn () => NativeShardInventory::allocateInDiscoveryOrder($files, 0, 2))->toThrow(RuntimeException::class);
+});
+
 it('allocates whole files by discovered test counts rather than file order', function (): void {
     $weights = [
         '/suite/c.php' => 1,
