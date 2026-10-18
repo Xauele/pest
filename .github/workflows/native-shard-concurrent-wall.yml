@@ -51,7 +51,9 @@ jobs:
             local started ended failed=0
             started=$(date +%s%N)
             for shard in 1 2 3 4; do
-              /usr/bin/time -f '%e,%M' -o "$prefix-$shard.time" "${runner[@]}" php "${args[@]}" "--shard=$shard/4" "--log-junit=$prefix-$shard.xml" > "$prefix-$shard.log" 2>&1 &
+              local temp_dir="$prefix-$shard-tmp"
+              mkdir -p "$temp_dir"
+              /usr/bin/time -f '%e,%M' -o "$prefix-$shard.time" "${runner[@]}" env TMPDIR="$temp_dir" php "${args[@]}" "--shard=$shard/4" "--log-junit=$prefix-$shard.xml" > "$prefix-$shard.log" 2>&1 &
               pids+=("$!")
             done
             for i in 0 1 2 3; do
