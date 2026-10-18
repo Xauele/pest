@@ -9,7 +9,7 @@ use Pest\TestSuite;
 
 require_once __DIR__.'/NativeShadowSource.php';
 
-it('captures actual Zend file entries alongside Xdebug coverage without changing TIA edges', function (): void {
+it('captures actual Zend file entries alongside independent PCOV/Xdebug coverage without changing TIA edges', function (): void {
     expect(extension_loaded('pest_observer'))->toBeTrue()
         ->and(getenv('PEST_TIA_NATIVE_SHADOW'))->toBe('1');
 

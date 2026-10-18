@@ -15,13 +15,14 @@ jobs:
       fail-fast: false
       matrix:
         php: ['8.4', '8.5']
+        coverage: ['xdebug', 'pcov']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ matrix.php }}
           tools: phpize, php-config, composer:v2
-          coverage: xdebug
+          coverage: ${{ matrix.coverage }}
       - name: Install Pest and ParaTest
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
@@ -66,14 +67,14 @@ jobs:
         env:
           XDEBUG_MODE: coverage
         run: php extensions/pest_observer/tests/proof.php
-      - name: Verify combined Xdebug and native Zend C observers are live
+      - name: Verify genuine Xdebug or PCOV coverage alongside Zend C observer
         shell: bash
         env:
           XDEBUG_MODE: coverage
           PEST_TIA_NATIVE_SHADOW: '1'
         run: |
           set -euo pipefail
-          php -r 'if (!extension_loaded("pest_observer") || !extension_loaded("xdebug") || !in_array("coverage", xdebug_info("mode"), true)) {fwrite(STDERR, "Both native and coverage drivers must be active\n");exit(1);} echo "ZEND_SHADOW_TWO_INDEPENDENT_DRIVERS=PASS\n";'
+          php -r '$xdebug=extension_loaded("xdebug") && in_array("coverage", xdebug_info("mode"), true); $pcov=function_exists("pcov\\start") && filter_var(ini_get("pcov.enabled"), FILTER_VALIDATE_BOOL); if(!extension_loaded("pest_observer") || !($xdebug || $pcov)){fwrite(STDERR,"Native observer + PCOV or Xdebug coverage must both be active\n");exit(1);} echo "ZEND_SHADOW_ORACLE=",($pcov ? "pcov" : "xdebug"),"\n";'
       - name: Per-test shadow differential and integrity controls, serial
         shell: bash
         env:
