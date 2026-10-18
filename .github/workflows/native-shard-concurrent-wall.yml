@@ -23,20 +23,11 @@ jobs:
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
         run: composer update --prefer-stable --no-interaction --no-progress
-      - name: Prepare equivalent deterministic real suite
+      - name: Prepare complete real suite without CustomAffixes exclusion
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          baseline = Path('phpunit.xml').read_text()
-          marker = '      <exclude>./tests/Fixtures/Tia</exclude>'
-          if baseline.count(marker) != 1:
-              raise SystemExit('Unable to derive stable real-suite benchmark configuration')
-          Path('phpunit.native-concurrent-benchmark.xml').write_text(
-              baseline.replace(marker, marker + '\n      <exclude>./tests/PHPUnit/CustomAffixes</exclude>')
-          )
-          print('CONCURRENT_EXCLUSION=Randomized CustomAffixes, excluded identically in both modes')
-          PY
+          cp phpunit.xml phpunit.native-concurrent-benchmark.xml
+          echo 'CONCURRENT_CUSTOM_AFFIXES_INCLUDED=true'
       - name: Run four actual shard processes simultaneously
         shell: bash
         env:
