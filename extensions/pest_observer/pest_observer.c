@@ -17,6 +17,7 @@ ZEND_BEGIN_MODULE_GLOBALS(pest_observer)
     zend_bool recording;
     zend_bool saw_dynamic_code;
     zend_string *root;
+    zend_string *last_filename;
     HashTable files;
 ZEND_END_MODULE_GLOBALS(pest_observer)
 
@@ -29,6 +30,7 @@ static void php_pest_observer_init_globals(zend_pest_observer_globals *g)
     g->recording = 0;
     g->saw_dynamic_code = 0;
     g->root = NULL;
+    g->last_filename = NULL;
 }
 
 static zend_always_inline bool pest_observer_under_root(zend_string *file)
@@ -64,6 +66,21 @@ static void pest_observer_on_begin(zend_execute_data *execute_data)
         PEST_OBSERVER_G(saw_dynamic_code) = 1;
         return;
     }
+
+    /*
+     * Most application hot paths repeatedly enter functions from the same
+     * file. Keep a refcounted last-file key so repeated calls pay no hash
+     * table lookup or duplicate string ownership cost.
+     */
+    if (PEST_OBSERVER_G(last_filename) != NULL
+        && zend_string_equals(filename, PEST_OBSERVER_G(last_filename))) {
+        return;
+    }
+
+    if (PEST_OBSERVER_G(last_filename) != NULL) {
+        zend_string_release(PEST_OBSERVER_G(last_filename));
+    }
+    PEST_OBSERVER_G(last_filename) = zend_string_copy(filename);
 
     if (strstr(ZSTR_VAL(filename), "eval()'d code") != NULL) {
         PEST_OBSERVER_G(saw_dynamic_code) = 1;
@@ -115,6 +132,10 @@ PHP_FUNCTION(pest_observer_start)
         zend_string_release(PEST_OBSERVER_G(root));
     }
     PEST_OBSERVER_G(root) = zend_string_init(ZSTR_VAL(root), len, 0);
+    if (PEST_OBSERVER_G(last_filename) != NULL) {
+        zend_string_release(PEST_OBSERVER_G(last_filename));
+        PEST_OBSERVER_G(last_filename) = NULL;
+    }
     zend_hash_clean(&PEST_OBSERVER_G(files));
     PEST_OBSERVER_G(saw_dynamic_code) = 0;
     PEST_OBSERVER_G(recording) = 1;
@@ -149,6 +170,10 @@ PHP_FUNCTION(pest_observer_stop)
     add_assoc_string(return_value, "scope", "function-entry-positive-evidence");
 
     zend_hash_clean(&PEST_OBSERVER_G(files));
+    if (PEST_OBSERVER_G(last_filename) != NULL) {
+        zend_string_release(PEST_OBSERVER_G(last_filename));
+        PEST_OBSERVER_G(last_filename) = NULL;
+    }
     PEST_OBSERVER_G(saw_dynamic_code) = 0;
 }
 
@@ -173,6 +198,7 @@ PHP_RINIT_FUNCTION(pest_observer)
     PEST_OBSERVER_G(recording) = 0;
     PEST_OBSERVER_G(saw_dynamic_code) = 0;
     PEST_OBSERVER_G(root) = NULL;
+    PEST_OBSERVER_G(last_filename) = NULL;
     zend_hash_init(&PEST_OBSERVER_G(files), 16, NULL, NULL, 0);
     return SUCCESS;
 }
@@ -181,6 +207,11 @@ PHP_RSHUTDOWN_FUNCTION(pest_observer)
 {
     PEST_OBSERVER_G(recording) = 0;
     zend_hash_destroy(&PEST_OBSERVER_G(files));
+
+    if (PEST_OBSERVER_G(last_filename) != NULL) {
+        zend_string_release(PEST_OBSERVER_G(last_filename));
+        PEST_OBSERVER_G(last_filename) = NULL;
+    }
 
     if (PEST_OBSERVER_G(root) != NULL) {
         zend_string_release(PEST_OBSERVER_G(root));
