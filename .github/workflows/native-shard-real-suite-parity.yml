@@ -23,6 +23,19 @@ jobs:
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
         run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Exclude inherently randomized class identities in cross-process comparison
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          original = Path('phpunit.xml').read_text()
+          marker = '      <exclude>./tests/Fixtures/Tia</exclude>'
+          if original.count(marker) != 1:
+              raise SystemExit('Unexpected phpunit.xml baseline; cannot create parity fixture')
+          result = original.replace(marker, marker + '\n      <exclude>./tests/PHPUnit/CustomAffixes</exclude>')
+          Path('phpunit.native-parity.xml').write_text(result)
+          print('REAL_SUITE_EXCLUSION=tests/PHPUnit/CustomAffixes (random class names generated independently per process)')
+          PY
       - name: Compare full project unit and feature shard sets
         shell: bash
         env:
@@ -34,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/native-real-suite
-          args=(bin/pest --configuration=phpunit.xml --parallel --processes=2 --exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test --colors=never)
+          args=(bin/pest --configuration=phpunit.native-parity.xml --parallel --processes=2 --exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test --colors=never)
           for mode in legacy native; do
             runner=(env -u PEST_SHARD_NATIVE -u PEST_NATIVE_SHARD_ALLOCATION)
             if [[ "$mode" == native ]]; then runner=(env PEST_SHARD_NATIVE=1 PEST_NATIVE_SHARD_ALLOCATION=ordered); fi
