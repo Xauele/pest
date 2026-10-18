@@ -155,6 +155,10 @@ final class NativeShardInventory
         foreach ($files as $filename) {
             $shard = $queue->extract();
 
+            if (! is_int($shard)) {
+                throw new RuntimeException('Native shard heap returned an invalid index.');
+            }
+
             if ($shard === $index) {
                 $selected[] = $filename;
             }
