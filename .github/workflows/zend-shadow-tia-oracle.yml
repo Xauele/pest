@@ -80,7 +80,7 @@ jobs:
           PAO_DISABLE: '1'
         run: |
           set -euo pipefail
-          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --colors=never > /tmp/native-shadow-serial.log 2>&1 || { cat /tmp/native-shadow-serial.log; exit 1; }
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --colors=never --log-junit=/tmp/native-shadow-serial.xml > /tmp/native-shadow-serial.log 2>&1 || { cat /tmp/native-shadow-serial.log; exit 1; }
           cat /tmp/native-shadow-serial.log
           grep -Eq 'Tests:[[:space:]]+6 passed' /tmp/native-shadow-serial.log || exit 1
           echo 'NATIVE_SHADOW_SERIAL_ORACLE=PASS'
@@ -95,7 +95,21 @@ jobs:
           PAO_DISABLE: '1'
         run: |
           set -euo pipefail
-          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --parallel --processes=2 --colors=never > /tmp/native-shadow-parallel.log 2>&1 || { cat /tmp/native-shadow-parallel.log; exit 1; }
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --parallel --processes=2 --colors=never --log-junit=/tmp/native-shadow-parallel.xml > /tmp/native-shadow-parallel.log 2>&1 || { cat /tmp/native-shadow-parallel.log; exit 1; }
           cat /tmp/native-shadow-parallel.log
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from collections import Counter
+          def identity(path):
+              return Counter((c.get('classname'), c.get('name')) for c in ET.parse(path).iter('testcase'))
+          serial = identity('/tmp/native-shadow-serial.xml')
+          parallel = identity('/tmp/native-shadow-parallel.xml')
+          print('NATIVE_SHADOW_SERIAL_JUNIT=', list(serial.items()))
+          print('NATIVE_SHADOW_PARALLEL_JUNIT=', list(parallel.items()))
+          print('NATIVE_SHADOW_PARALLEL_EXTRA=', list((parallel - serial).items()))
+          print('NATIVE_SHADOW_PARALLEL_MISSING=', list((serial - parallel).items()))
+          if serial != parallel:
+              raise SystemExit('ParaTest executed a different exact JUnit multiset from sequential Pest')
+          PY
           grep -Eq 'Tests:[[:space:]]+6 passed' /tmp/native-shadow-parallel.log || exit 1
           echo 'NATIVE_SHADOW_PARATEST_ORACLE=PASS'
