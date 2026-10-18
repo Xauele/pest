@@ -26,6 +26,9 @@ final class NativeShardInventory
     {
         $byFile = [];
 
+        /** @var array<string, non-empty-string> $classFiles */
+        $classFiles = [];
+
         foreach ($tests as $test) {
             if (! $test instanceof TestMethod) {
                 throw new RuntimeException(sprintf(
@@ -34,26 +37,31 @@ final class NativeShardInventory
                 ));
             }
 
-            $file = $test->file();
             $class = $test->className();
 
-            if (class_exists($class, false)) {
-                $classFile = (new ReflectionClass($class))->getFileName();
+            if (! isset($classFiles[$class])) {
+                $file = $test->file();
 
-                if (is_string($classFile) && $classFile !== '') {
-                    $file = $classFile;
-                }
+                if (class_exists($class, false)) {
+                    $classFile = (new ReflectionClass($class))->getFileName();
 
-                if (str_starts_with($class, 'P\\') && property_exists($class, '__filename')) {
-                    $original = $class::$__filename;
+                    if (is_string($classFile) && $classFile !== '') {
+                        $file = $classFile;
+                    }
 
-                    if (is_string($original) && $original !== '') {
-                        $file = $original;
+                    if (str_starts_with($class, 'P\\') && property_exists($class, '__filename')) {
+                        $original = $class::$__filename;
+
+                        if (is_string($original) && $original !== '') {
+                            $file = $original;
+                        }
                     }
                 }
+
+                $classFiles[$class] = self::canonicalFile($file);
             }
 
-            $file = self::canonicalFile($file);
+            $file = $classFiles[$class];
             $id = $test->id();
             if (isset($byFile[$file][$id])) {
                 throw new RuntimeException('Duplicate native PHPUnit test identity: '.$id);
