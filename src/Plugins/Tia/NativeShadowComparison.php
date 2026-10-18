@@ -12,7 +12,6 @@ use RuntimeException;
 final class NativeShadowComparison
 {
     /**
-     * @param  mixed  $evidence
      * @param  list<string>  $coveredFiles
      * @return array{
      *     observed_files: list<string>, covered_files: list<string>,
