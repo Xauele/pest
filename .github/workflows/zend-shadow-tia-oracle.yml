@@ -80,7 +80,7 @@ jobs:
           PAO_DISABLE: '1'
         run: |
           set -euo pipefail
-          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --colors=never --log-junit=/tmp/native-shadow-serial.xml > /tmp/native-shadow-serial.log 2>&1 || { cat /tmp/native-shadow-serial.log; exit 1; }
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --group=native-shadow-proof --colors=never --log-junit=/tmp/native-shadow-serial.xml > /tmp/native-shadow-serial.log 2>&1 || { cat /tmp/native-shadow-serial.log; exit 1; }
           cat /tmp/native-shadow-serial.log
           grep -Eq 'Tests:[[:space:]]+6 passed' /tmp/native-shadow-serial.log || exit 1
           echo 'NATIVE_SHADOW_SERIAL_ORACLE=PASS'
@@ -95,7 +95,7 @@ jobs:
           PAO_DISABLE: '1'
         run: |
           set -euo pipefail
-          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --parallel --processes=2 --colors=never --log-junit=/tmp/native-shadow-parallel.xml > /tmp/native-shadow-parallel.log 2>&1 || { cat /tmp/native-shadow-parallel.log; exit 1; }
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShadow.xml --group=native-shadow-proof --parallel --processes=2 --colors=never --log-junit=/tmp/native-shadow-parallel.xml > /tmp/native-shadow-parallel.log 2>&1 || { cat /tmp/native-shadow-parallel.log; exit 1; }
           cat /tmp/native-shadow-parallel.log
           python3 - <<'PY'
           import xml.etree.ElementTree as ET

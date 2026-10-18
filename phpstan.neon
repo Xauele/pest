@@ -9,3 +9,5 @@ parameters:
         - src
 
     reportUnmatchedIgnoredErrors: false
+    stubFiles:
+        - stubs/phpstan-native-observer.stub

@@ -24,10 +24,7 @@ final class NativeObserverBridge
             throw new RuntimeException('The native Pest observer is unavailable.');
         }
 
-        /** @var callable(string): bool $start */
-        $start = 'pest_observer_start';
-
-        return $start($canonicalRoot);
+        return \pest_observer_start($canonicalRoot);
     }
 
     public static function stop(): mixed
@@ -36,9 +33,6 @@ final class NativeObserverBridge
             throw new RuntimeException('The native Pest observer is unavailable during scope cleanup.');
         }
 
-        /** @var callable(): mixed $stop */
-        $stop = 'pest_observer_stop';
-
-        return $stop();
+        return \pest_observer_stop();
     }
 }

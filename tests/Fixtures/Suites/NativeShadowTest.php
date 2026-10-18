@@ -36,7 +36,7 @@ it('captures actual Zend file entries alongside Xdebug coverage without changing
     $recorder->reset();
 
     expect($recorder->nativeShadowReports())->toBeEmpty();
-});
+})->group('native-shadow-proof');
 
 it('must keep unknown internal data I/O outside both file-code oracles', function (): void {
     $dataFile = tempnam(sys_get_temp_dir(), 'pest-shadow-data-');
@@ -62,7 +62,7 @@ it('must keep unknown internal data I/O outside both file-code oracles', functio
     } finally {
         @unlink($dataFile);
     }
-});
+})->group('native-shadow-proof');
 
 it('detects deliberate oracle-only source coverage without certifying a skipped test', function (): void {
     $source = realpath(__DIR__.'/NativeShadowSource.php');
@@ -81,7 +81,7 @@ it('detects deliberate oracle-only source coverage without certifying a skipped 
 
     expect($report['coverage_only'])->toBe([$source])
         ->and($report['safe_to_skip_tests'])->toBeFalse();
-});
+})->group('native-shadow-proof');
 
 it('rejects malicious native claims of negative test-impact proof', function (): void {
     $evidence = [
@@ -94,7 +94,7 @@ it('rejects malicious native claims of negative test-impact proof', function ():
     expect(fn (): array => NativeShadowComparison::compare(
         $evidence, [], SourceScope::fromProjectRoot(TestSuite::getInstance()->rootPath),
     ))->toThrow(RuntimeException::class);
-});
+})->group('native-shadow-proof');
 
 it('rejects corrupt native evidence instead of emitting an empty green report', function (): void {
     $evidence = [
@@ -107,7 +107,7 @@ it('rejects corrupt native evidence instead of emitting an empty green report', 
     expect(fn (): array => NativeShadowComparison::compare(
         $evidence, [], SourceScope::fromProjectRoot(TestSuite::getInstance()->rootPath),
     ))->toThrow(RuntimeException::class);
-});
+})->group('native-shadow-proof');
 
 it('rejects an unavailable native shadow driver rather than silently turning off verification', function (): void {
     if (extension_loaded('pest_observer')) {
@@ -121,4 +121,4 @@ it('rejects an unavailable native shadow driver rather than silently turning off
         $recorder = new Recorder;
         $recorder->activate();
     })->toThrow(RuntimeException::class);
-});
+})->group('native-shadow-proof');
