@@ -1896,6 +1896,7 @@
   ✓ addOutput → it displays shard information after test execution
   ✓ addOutput → it uses singular form for single test file
   ✓ addOutput → it returns original exit code when shard is not set
+  ✓ native time-balanced shard allocation → it matches the original deterministic allocation with ties, zero times and large shard counts
 
    PASS  Tests\Unit\Plugins\Shard\RunIntegrity
   ✓ it records only active runs and normalises generated Pest class names
@@ -1903,6 +1904,7 @@
   ✓ it aggregates parallel worker evidence without duplicate classes
   ✓ it fails closed on corrupted worker evidence
   ✓ it fails a green run if one assigned test ID never completed
+  ✓ it rejects duplicated test execution evidence from independent workers
 
    PASS  Tests\Unit\Plugins\Tia\ContentHash
   ✓ of() → it returns false when file does not exist
@@ -2303,4 +2305,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1640 passed (3614 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1642 passed (3620 assertions)
