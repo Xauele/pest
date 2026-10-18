@@ -128,7 +128,7 @@ final class RunIntegrity
                     continue;
                 }
 
-                // Distinct workers must not silently certify the same test twice.
+                // @note Reject duplicate execution evidence across distinct workers.
                 if (isset($observed[$class])) {
                     $valid = false;
                 }

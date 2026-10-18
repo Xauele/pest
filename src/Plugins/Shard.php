@@ -130,8 +130,16 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
         $timings = $this->loadShardsFile();
         if ($timings !== null) {
-            $knownTests = array_values(array_filter($tests, fn (string $test): bool => isset($timings[$test])));
-            $newTests = array_values(array_diff($tests, $knownTests));
+            $knownTests = [];
+            $newTests = [];
+
+            foreach ($tests as $test) {
+                if (isset($timings[$test])) {
+                    $knownTests[] = $test;
+                } else {
+                    $newTests[] = $test;
+                }
+            }
 
             $partitions = $this->partitionByTime($knownTests, $timings, $total);
 
@@ -176,8 +184,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             }
         }
 
-        // The complete discovery catalogue is no longer needed during execution.
-        // Keep only the selected test IDs and release the full-suite index.
+        // @note Release the full discovery catalogue before executing selected test IDs.
         $this->discoveredTestIds = [];
 
         $filter = $testsToRun === [] ? '(?!)' : sprintf('^(?:P\\\\)?(?:%s)', $this->buildFilterArgument($testsToRun));
@@ -670,14 +677,13 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         /** @var non-empty-list<float> */
         $binTimes = array_fill(0, $total, 0.0);
 
-        // Native SPL heap removes the O(tests * shards) scan for large matrices.
-        // The original linear scan is faster for small suites and shard counts.
+        // @note Use native SPL for large matrices; the linear scan wins for small ones.
         if ($total >= 64 && count($testsWithTimings) >= 256) {
             $heap = new SplPriorityQueue;
             $heap->setExtractFlags(SplPriorityQueue::EXTR_BOTH);
 
             foreach ($binTimes as $index => $time) {
-                // A smaller accumulated time wins; ties retain the lowest index.
+                // @note Preserve deterministic lowest-index tie breaking.
                 $heap->insert($index, [-$time, -$index]);
             }
 

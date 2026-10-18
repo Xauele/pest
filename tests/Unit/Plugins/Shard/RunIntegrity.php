@@ -74,7 +74,6 @@ it('fails a green run if one assigned test ID never completed', function (): voi
     }
 });
 
-
 it('rejects duplicated test execution evidence from independent workers', function (): void {
     $runId = bin2hex(random_bytes(16));
     $duplicate = 'Tests\\Example::test_with_data_set "first"';
