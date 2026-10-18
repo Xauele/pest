@@ -101,3 +101,23 @@ test('old semantic cache schema cannot be replayed after strict content fingerpr
         @rmdir($root);
     }
 });
+
+test('Xdebug reexecutes affected tests after a PHPDoc-only change instead of replaying stale green', function (array $arguments): void {
+    if (! function_exists('xdebug_info') && ! function_exists('pcov\start')) {
+        test()->markTestSkipped('Requires an active code-coverage extension.');
+    }
+
+    $project = Project::make('master');
+    $project->seed('master');
+
+    $source = (string) file_get_contents($project->path('app/Greeter.php'));
+    $modified = str_replace('final class Greeter', "/** @permission guest */\nfinal class Greeter", $source);
+    $project->write('app/Greeter.php', $modified);
+
+    $result = $project->pest('--tia', ...$arguments);
+
+    expect($result->exitCode)->toBe(0, $result->describe())
+        ->and($result->affected())->toBe(2, $result->describe())
+        ->and($result->replayed())->toBe(4, $result->describe())
+        ->and($result->tally())->toContain('6 passed');
+})->with(Project::SEQUENTIAL_AND_PARALLEL)->skipOnWindows();
