@@ -20,6 +20,7 @@ it('uses the native ParaTest suite inventory for Pest and PHPUnit sharding', fun
             dirname(__DIR__, 2),
             [
                 'PEST_SHARD_NATIVE' => '1',
+                'PEST_NATIVE_SHARD_DEBUG' => '1',
                 'COLLISION_PRINTER' => 'DefaultPrinter',
                 'COLLISION_IGNORE_DURATION' => 'true',
                 'PAO_DISABLE' => '1',

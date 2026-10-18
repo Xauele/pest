@@ -663,6 +663,10 @@ final class WrapperRunner implements RunnerInterface
         $native = Parallel::getGlobal('NATIVE_SHARD_FILE_ALLOCATION');
         $allFiles = array_keys($files);
 
+        if (getenv('PEST_NATIVE_SHARD_DEBUG') === '1') {
+            $this->output->writeln('DEBUG_NATIVE_DISCOVERY: '.json_encode($allFiles, JSON_THROW_ON_ERROR));
+        }
+
         if (is_string($native) && preg_match('/^(\\d+)\\/(\\d+)$/', $native, $matches) === 1) {
             $index = (int) $matches[1];
             $total = (int) $matches[2];
