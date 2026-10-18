@@ -8,6 +8,7 @@ use Pest\Contracts\Plugins\AddsOutput;
 use Pest\Contracts\Plugins\HandlesArguments;
 use Pest\Contracts\Plugins\Terminable;
 use Pest\Exceptions\InvalidOption;
+use Pest\Plugins\Shard\NativeShardInventory;
 use Pest\Plugins\Shard\RunIntegrity;
 use Pest\Subscribers\EnsureNativeShardInventoryFiltered;
 use Pest\Subscribers\EnsureNativeShardInventoryLoaded;
@@ -125,8 +126,9 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
         if (getenv('PEST_SHARD_NATIVE') === '1'
             && ! Parallel::isWorker()
-            && (in_array('--parallel', $arguments, true) || in_array('-p', $arguments, true))
-            && $this->loadShardsFile() === null) {
+            && (in_array('--parallel', $arguments, true) || in_array('-p', $arguments, true))) {
+            NativeShardInventory::setHistoricalTimings($this->loadShardsFile());
+
             Event\Facade::instance()->registerSubscriber(new EnsureNativeShardInventoryLoaded);
             Event\Facade::instance()->registerSubscriber(new EnsureNativeShardInventoryFiltered);
             Parallel::setGlobal('NATIVE_SHARD_FILE_ALLOCATION', "$index/$total");
@@ -436,10 +438,12 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      * @internal This is an opt-in native ParaTest experiment only.
      */
     /** @param array<string, true> $expected */
-    public static function recordNativeFileAllocation(int $index, int $total, int $assigned, int $discovered, array $expected): void
+    public static function recordNativeFileAllocation(int $index, int $total, int $assigned, int $discovered, array $expected, bool $timeBalanced = false, bool $outdated = false): void
     {
         self::$expectedTestIds = $expected;
         self::$integrityRunId = bin2hex(random_bytes(16));
+        self::$timeBalanced = $timeBalanced;
+        self::$shardsOutdated = $outdated;
         Parallel::setGlobal(self::INTEGRITY_GLOBAL, self::$integrityRunId);
 
         self::$shard = [

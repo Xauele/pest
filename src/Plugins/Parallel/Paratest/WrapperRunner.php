@@ -680,16 +680,27 @@ final class WrapperRunner implements RunnerInterface
                 throw new RuntimeException('Invalid native ParaTest shard configuration.');
             }
 
-            $allocation = getenv('PEST_NATIVE_SHARD_ALLOCATION') ?: 'ordered';
+            $allocation = getenv('PEST_NATIVE_SHARD_ALLOCATION')
+                ?: (NativeShardInventory::hasHistoricalTimings() ? 'history' : 'ordered');
+
+            $historical = $allocation === 'history'
+                ? NativeShardInventory::selectUsingTimings($allFiles, $index, $total)
+                : null;
 
             $selected = match ($allocation) {
+                'history' => $historical ?? NativeShardInventory::allocateInDiscoveryOrder($allFiles, $index, $total),
                 'ordered' => NativeShardInventory::allocateInDiscoveryOrder($allFiles, $index, $total),
                 'test-count' => NativeShardInventory::selectFiles($allFiles, $index, $total),
                 default => throw new RuntimeException('Unknown native shard allocation strategy: '.$allocation),
             };
+
             $expected = NativeShardInventory::selectedIds($selected);
             NativeShardInventory::release();
-            Shard::recordNativeFileAllocation($index, $total, count($selected), count($allFiles), $expected);
+            Shard::recordNativeFileAllocation(
+                $index, $total, count($selected), count($allFiles), $expected,
+                $historical !== null,
+                $allocation === 'history' && $historical === null,
+            );
 
             return $selected;
         }
