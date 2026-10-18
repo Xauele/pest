@@ -61,6 +61,10 @@ jobs:
           scan_dir="$RUNNER_TEMP/pest-native-shadow-ini"
           mkdir -p "$scan_dir"
           echo "extension=$GITHUB_WORKSPACE/extensions/pest_observer/modules/pest_observer.so" > "$scan_dir/99-pest-observer.ini"
+          if [[ "${{ matrix.coverage }}" == pcov ]]; then
+            echo "pcov.directory=/" >> "$scan_dir/99-pest-observer.ini"
+            echo 'pcov.exclude=~/(vendor|node_modules|usr|opt)/~' >> "$scan_dir/99-pest-observer.ini"
+          fi
           echo "PHP_INI_SCAN_DIR=:$scan_dir" >> "$GITHUB_ENV"
       - name: Native C ABI proof with internal I/O hazard detection
         shell: bash
