@@ -160,13 +160,7 @@ final class NativeShardInventory
     }
 
     /**
-     * Assign whole native PHPUnit files using measured class durations.
-     *
-     * Partial historical profiles use the median known class duration for
-     * unknown classes. Less than half covered falls back to stable discovery
-     * order instead of manufacturing certainty from predominantly stale data.
-     *
-     * @param  list<non-empty-string> $available
+     * @param  list<non-empty-string>  $available
      * @return list<non-empty-string>|null
      */
     public static function selectUsingTimings(array $available, int $index, int $total): ?array
@@ -242,10 +236,7 @@ final class NativeShardInventory
     }
 
     /**
-     * Deterministic largest-cost-first allocation. Only files can be split
-     * across CI shards, preserving original PHPUnit class execution semantics.
-     *
-     * @param  array<non-empty-string, float> $weights
+     * @param  array<non-empty-string, float>  $weights
      * @return list<non-empty-string>
      */
     public static function allocateByEstimatedDuration(array $weights, int $index, int $total): array
