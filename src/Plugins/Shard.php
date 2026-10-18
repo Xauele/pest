@@ -435,6 +435,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
     /**
      * @internal This is an opt-in native ParaTest experiment only.
      */
+    /** @param array<string, true> $expected */
     public static function recordNativeFileAllocation(int $index, int $total, int $assigned, int $discovered, array $expected): void
     {
         self::$expectedTestIds = $expected;

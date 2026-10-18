@@ -49,8 +49,8 @@ final class NativeShardInventory
     }
 
     /**
-     * @param  list<string>  $available
-     * @return list<string>
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>
      */
     public static function filterDiscoveredFiles(array $available): array
     {
@@ -104,6 +104,10 @@ final class NativeShardInventory
         return $ids;
     }
 
+    /**
+     * @param  non-empty-string  $path
+     * @return non-empty-string
+     */
     private static function canonicalFile(string $path): string
     {
         return realpath($path)
