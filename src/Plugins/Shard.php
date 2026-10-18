@@ -92,7 +92,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
             if (is_string($runId)) {
                 self::$integrityRunId = $runId;
-                $this->registerIntegritySubscribers();
+                $this->registerIntegritySubscribers(is_string(Parallel::getGlobal('NATIVE_SHARD_FILE_ALLOCATION')));
             }
         }
 
@@ -526,9 +526,9 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         $this->writeTimings($timings);
     }
 
-    private function registerIntegritySubscribers(): void
+    private function registerIntegritySubscribers(bool $preserveRawTestIds = false): void
     {
-        RunIntegrity::activate();
+        RunIntegrity::activate($preserveRawTestIds);
 
         Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsFinished);
         Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsSkipped);

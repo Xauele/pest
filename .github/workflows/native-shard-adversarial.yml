@@ -44,6 +44,7 @@ jobs:
           fi
           cat /tmp/native-prefix-probe.log
           grep -q '2 passed' /tmp/native-prefix-probe.log
+          echo 'COUNTEREXAMPLE_P_NAMESPACE_CANONICAL_IDS=PASS'
 
   empty_shard:
     if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-')

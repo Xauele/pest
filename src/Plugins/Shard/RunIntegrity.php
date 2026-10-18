@@ -14,6 +14,8 @@ final class RunIntegrity
 {
     private static bool $active = false;
 
+    private static bool $preserveRawTestIds = false;
+
     /** @var array<string, true> */
     private static array $observed = [];
 
@@ -26,9 +28,10 @@ final class RunIntegrity
     /** @var array<string, true> */
     private static array $duplicates = [];
 
-    public static function activate(): void
+    public static function activate(bool $preserveRawTestIds = false): void
     {
         self::$active = true;
+        self::$preserveRawTestIds = $preserveRawTestIds;
         self::$observed = [];
         self::$finished = [];
         self::$skipped = [];
@@ -38,6 +41,7 @@ final class RunIntegrity
     public static function deactivate(): void
     {
         self::$active = false;
+        self::$preserveRawTestIds = false;
         self::$observed = [];
         self::$finished = [];
         self::$skipped = [];
@@ -50,7 +54,7 @@ final class RunIntegrity
             return;
         }
 
-        $normalised = str_starts_with($testId, 'P\\') ? substr($testId, 2) : $testId;
+        $normalised = self::normaliseTestId($testId);
 
         if ($normalised !== '') {
             self::$observed[$normalised] = true;
@@ -74,7 +78,7 @@ final class RunIntegrity
             return;
         }
 
-        $id = str_starts_with($testId, 'P\\') ? substr($testId, 2) : $testId;
+        $id = self::normaliseTestId($testId);
 
         if ($id === '') {
             return;
@@ -86,6 +90,15 @@ final class RunIntegrity
 
         $seen[$id] = true;
         self::$observed[$id] = true;
+    }
+
+    private static function normaliseTestId(string $testId): string
+    {
+        if (self::$preserveRawTestIds) {
+            return $testId;
+        }
+
+        return str_starts_with($testId, 'P\\') ? substr($testId, 2) : $testId;
     }
 
     public static function hasDuplicateObservations(): bool

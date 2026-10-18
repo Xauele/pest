@@ -47,7 +47,6 @@ final class NativeShardInventory
 
             $file = self::canonicalFile($file);
             $id = $test->id();
-            $id = str_starts_with($id, 'P\\') ? substr($id, 2) : $id;
             if (isset($byFile[$file][$id])) {
                 throw new RuntimeException('Duplicate native PHPUnit test identity: '.$id);
             }
