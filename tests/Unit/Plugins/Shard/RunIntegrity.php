@@ -21,7 +21,7 @@ it('records only active runs and normalises generated Pest class names', functio
         'Tests\\Feature\\Generated::test_one' => true,
         'Tests\\Unit\\PhpUnitCase::test_two' => true,
     ]);
-});
+})->group('shard-state-self-test');
 
 it('detects missing and unexpected test IDs without relying on assertion counts', function (): void {
     $expected = ['Tests\\A::first' => true, 'Tests\\A::second' => true];
@@ -31,7 +31,7 @@ it('detects missing and unexpected test IDs without relying on assertion counts'
         'missing' => ['Tests\\A::second'],
         'unexpected' => ['Tests\\C::third'],
     ]);
-});
+})->group('shard-state-self-test');
 
 it('aggregates parallel worker evidence without duplicate classes', function (): void {
     $runId = bin2hex(random_bytes(16));
@@ -44,7 +44,7 @@ it('aggregates parallel worker evidence without duplicate classes', function ():
         'Tests\\First::first' => true,
         'Tests\\Second::second' => true,
     ])->and(RunIntegrity::collectWorkerEvidence($runId))->toBeNull();
-});
+})->group('shard-state-self-test');
 
 it('fails closed on corrupted worker evidence', function (): void {
     $runId = bin2hex(random_bytes(16));
@@ -53,7 +53,7 @@ it('fails closed on corrupted worker evidence', function (): void {
 
     expect(RunIntegrity::collectWorkerEvidence($runId))->toBeNull()
         ->and(file_exists($path))->toBeFalse();
-});
+})->group('shard-state-self-test');
 
 it('fails a green run if one assigned test ID never completed', function (): void {
     $expected = new ReflectionProperty(Shard::class, 'expectedTestIds');
@@ -72,7 +72,7 @@ it('fails a green run if one assigned test ID never completed', function (): voi
     } finally {
         $expected->setValue(null, $original);
     }
-});
+})->group('shard-state-self-test');
 
 it('rejects duplicated test execution evidence from independent workers', function (): void {
     $runId = bin2hex(random_bytes(16));
@@ -86,7 +86,7 @@ it('rejects duplicated test execution evidence from independent workers', functi
 
     expect(RunIntegrity::collectWorkerEvidence($runId))->toBeNull()
         ->and(file_exists($secondPath))->toBeFalse();
-})->group('integration');
+})->group('integration', 'shard-state-self-test');
 
 it('rejects duplicate completions inside a single worker using the native finished event', function (): void {
     RunIntegrity::activate();
@@ -100,7 +100,7 @@ it('rejects duplicate completions inside a single worker using the native finish
     RunIntegrity::writeWorkerEvidence($runId);
 
     expect(RunIntegrity::collectWorkerEvidence($runId))->toBeNull();
-});
+})->group('shard-state-self-test');
 
 it('accepts one native skipped and one finished event for the same execution', function (): void {
     RunIntegrity::activate();
@@ -109,7 +109,7 @@ it('accepts one native skipped and one finished event for the same execution', f
 
     expect(RunIntegrity::hasDuplicateObservations())->toBeFalse()
         ->and(RunIntegrity::observed())->toBe(['Tests\Skipped::test_case' => true]);
-});
+})->group('shard-state-self-test');
 
 it('rejects repeated skipped notifications for the same native test', function (): void {
     RunIntegrity::activate();
@@ -117,4 +117,4 @@ it('rejects repeated skipped notifications for the same native test', function (
     RunIntegrity::observeSkipped('Tests\RepeatedSkipped::test_case');
 
     expect(RunIntegrity::hasDuplicateObservations())->toBeTrue();
-});
+})->group('shard-state-self-test');

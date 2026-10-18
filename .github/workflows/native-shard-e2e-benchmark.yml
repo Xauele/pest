@@ -34,7 +34,7 @@ jobs:
           set -uo pipefail
           for variant in root filtered; do
             args=(bin/pest --configuration=phpunit.xml --no-tia --list-test-ids)
-            if [[ "$variant" == filtered ]]; then args+=(--exclude-group=integration --exclude-group=tia); fi
+            if [[ "$variant" == filtered ]]; then args+=(--exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test); fi
             printf '\nDISCOVERY variant=%s\n' "$variant"
             php "${args[@]}" > /tmp/native-discovery-output.txt 2>&1
             result=$?
@@ -54,7 +54,7 @@ jobs:
           mkdir -p /tmp/pest-shard-bench
           metrics=/tmp/pest-shard-bench/metrics.csv
           printf 'mode,round,shard,elapsed_seconds,peak_rss_kb\n' > "$metrics"
-          args=(bin/pest --configuration=phpunit.xml --parallel --processes=2 --exclude-group=integration --exclude-group=tia --colors=never)
+          args=(bin/pest --configuration=phpunit.xml --parallel --processes=2 --exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test --colors=never)
           run_one() {
             local mode="$1" round="$2" shard="$3"
             local out="/tmp/pest-shard-bench/${mode}-${round}-${shard}.log"

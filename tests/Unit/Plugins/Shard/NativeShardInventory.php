@@ -37,8 +37,8 @@ it('reproducibly assigns each file once across shard counts including empty shar
             }
         }
 
-        expect($seen)->toHaveCount(count($weights))
-            ->and(array_diff_key($weights, $seen))->toBe([]);
+        expect($seen)->toHaveSameSize($weights)
+            ->and(array_diff_key($weights, $seen))->toBeEmpty();
     }
 });
 
