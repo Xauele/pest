@@ -1,0 +1,93 @@
+name: Native Zend TIA Observer ABI and Evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-and-prove:
+    if: startsWith(github.head_ref, 'experiment/zend-native-tia-observer-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          tools: phpize, php-config
+          coverage: none
+      - name: Install matching PHP development headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -v | head -2
+          command -v phpize
+          command -v php-config
+          phpize -v
+          php-config --version
+          php-config --includes
+          test -f "$(php-config --include-dir)/main/php.h"
+          [[ "$(php-config --version)" == "${{ matrix.php }}"* ]]
+      - name: Compile shared C extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd extensions/pest_observer
+          phpize
+          ./configure --enable-pest-observer --with-php-config="$(command -v php-config)"
+          make -j2
+          test -s modules/pest_observer.so
+          php -n -d extension="$(pwd)/modules/pest_observer.so" --ri pest_observer
+      - name: Check Zend observer correctness, isolation and fail-closed dynamic code
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd extensions/pest_observer
+          php -n -d extension="$(pwd)/modules/pest_observer.so" tests/proof.php
+      - name: Compare no extension vs idle extension vs native observation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          import statistics
+          import subprocess
+          from pathlib import Path
+
+          root = Path('extensions/pest_observer').resolve()
+          extension = root / 'modules/pest_observer.so'
+          bench = root / 'tests/benchmark.php'
+          results = {'absent': [], 'idle': [], 'active': []}
+          for round_no in range(1, 6):
+              order = ['absent', 'idle', 'active']
+              if round_no % 2 == 0:
+                  order.reverse()
+              for mode in order:
+                  cmd = ['php', '-n']
+                  if mode != 'absent':
+                      cmd += ['-d', 'extension=' + str(extension)]
+                  cmd.append(str(bench))
+                  env = dict(os.environ, PEST_OBSERVER_BENCH_MODE=mode)
+                  run = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
+                  if run.returncode:
+                      raise SystemExit(f'BENCH_FAIL mode={mode} stdout={run.stdout} stderr={run.stderr}')
+                  m = re.search(r'seconds=([0-9.]+)', run.stdout)
+                  if not m:
+                      raise SystemExit(f'BENCH_MISSING_RESULTS mode={mode} stdout={run.stdout}')
+                  elapsed = float(m.group(1))
+                  results[mode].append(elapsed)
+                  print(f'ZEND_OBSERVER_BENCH round={round_no} mode={mode} seconds={elapsed:.6f}')
+          medians = {mode: statistics.median(times) for mode, times in results.items()}
+          for mode, elapsed in medians.items():
+              print(f'ZEND_OBSERVER_MEDIAN mode={mode} seconds={elapsed:.6f}')
+          print(f'ZEND_OBSERVER_IDLE_VS_ABSENT={medians["idle"]/medians["absent"]:.3f}x')
+          print(f'ZEND_OBSERVER_ACTIVE_VS_ABSENT={medians["active"]/medians["absent"]:.3f}x')
+          print('ZEND_OBSERVER_SCOPE=500000 tiny userland PHP calls, not full CI benchmark')
+          PY
