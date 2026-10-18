@@ -624,3 +624,42 @@ describe('addOutput', function (): void {
             ->and($outputText)->not->toContain('Shard:');
     });
 });
+
+
+describe('native time-balanced shard allocation', function (): void {
+    it('matches the original deterministic allocation with ties, zero times and large shard counts', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $partition = (new ReflectionClass($shard))->getMethod('partitionByTime');
+
+        $classes = [];
+        $timings = [];
+
+        for ($i = 0; $i < 1024; $i++) {
+            $class = 'Tests\\Benchmark\\Case'.str_pad((string) $i, 4, '0', STR_PAD_LEFT);
+            $classes[] = $class;
+            $timings[$class] = (($i * 17) % 37) / 10.0;
+        }
+
+        $items = array_map(static fn (string $test): array => [
+            'test' => $test,
+            'time' => $timings[$test],
+        ], $classes);
+
+        usort($items, static fn (array $a, array $b): int => $b['time'] <=> $a['time']);
+
+        foreach ([8, 64, 128, 256] as $total) {
+            $expected = array_fill(0, $total, []);
+            $binTimes = array_fill(0, $total, 0.0);
+
+            foreach ($items as $item) {
+                $index = array_search(min($binTimes), $binTimes, strict: true);
+                assert(is_int($index));
+
+                $expected[$index][] = $item['test'];
+                $binTimes[$index] += $item['time'];
+            }
+
+            expect($partition->invoke($shard, $classes, $timings, $total))->toBe($expected);
+        }
+    })->group('integration');
+});

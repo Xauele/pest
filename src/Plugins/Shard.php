@@ -17,6 +17,7 @@ use Pest\Subscribers\EnsureShardTimingStarted;
 use Pest\TestSuite;
 use PHPUnit\Event;
 use PHPUnit\Runner\Version;
+use SplPriorityQueue;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -175,6 +176,10 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             }
         }
 
+        // The complete discovery catalogue is no longer needed during execution.
+        // Keep only the selected test IDs and release the full-suite index.
+        $this->discoveredTestIds = [];
+
         $filter = $testsToRun === [] ? '(?!)' : sprintf('^(?:P\\\\)?(?:%s)', $this->buildFilterArgument($testsToRun));
 
         $this->ensureFilterLengthIsSafe($filter);
@@ -204,6 +209,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
         /** @phpstan-ignore-next-line */
         self::$knownTests = $this->allTests($arguments);
+        $this->discoveredTestIds = [];
 
         if ($this->hasArgument('--parallel', $arguments) || $this->hasArgument('-p', $arguments)) {
             Parallel::setGlobal('UPDATE_SHARDS', true);
@@ -663,6 +669,30 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         $bins = array_fill(0, $total, []);
         /** @var non-empty-list<float> */
         $binTimes = array_fill(0, $total, 0.0);
+
+        // Native SPL heap removes the O(tests * shards) scan for large matrices.
+        // The original linear scan is faster for small suites and shard counts.
+        if ($total >= 64 && count($testsWithTimings) >= 256) {
+            $heap = new SplPriorityQueue;
+            $heap->setExtractFlags(SplPriorityQueue::EXTR_BOTH);
+
+            foreach ($binTimes as $index => $time) {
+                // A smaller accumulated time wins; ties retain the lowest index.
+                $heap->insert($index, [-$time, -$index]);
+            }
+
+            foreach ($testsWithTimings as $item) {
+                $minimum = $heap->extract();
+                assert(is_array($minimum) && is_int($minimum['data']));
+                $minIndex = $minimum['data'];
+
+                $bins[$minIndex][] = $item['test'];
+                $binTimes[$minIndex] += $item['time'];
+                $heap->insert($minIndex, [-$binTimes[$minIndex], -$minIndex]);
+            }
+
+            return $bins;
+        }
 
         foreach ($testsWithTimings as $item) {
             $minIndex = array_search(min($binTimes), $binTimes, strict: true);

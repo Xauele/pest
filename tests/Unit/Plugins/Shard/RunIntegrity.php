@@ -73,3 +73,18 @@ it('fails a green run if one assigned test ID never completed', function (): voi
         $expected->setValue(null, $original);
     }
 });
+
+
+it('rejects duplicated test execution evidence from independent workers', function (): void {
+    $runId = bin2hex(random_bytes(16));
+    $duplicate = 'Tests\\Example::test_with_data_set "first"';
+    $secondPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'pest-shard-integrity-'.$runId.'-other.json';
+
+    RunIntegrity::activate();
+    RunIntegrity::observe($duplicate);
+    RunIntegrity::writeWorkerEvidence($runId);
+    file_put_contents($secondPath, json_encode([$duplicate], JSON_THROW_ON_ERROR));
+
+    expect(RunIntegrity::collectWorkerEvidence($runId))->toBeNull()
+        ->and(file_exists($secondPath))->toBeFalse();
+})->group('integration');

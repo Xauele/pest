@@ -128,6 +128,11 @@ final class RunIntegrity
                     continue;
                 }
 
+                // Distinct workers must not silently certify the same test twice.
+                if (isset($observed[$class])) {
+                    $valid = false;
+                }
+
                 $observed[$class] = true;
             }
         }
