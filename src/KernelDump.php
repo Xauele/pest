@@ -12,6 +12,8 @@ final class KernelDump
 {
     private string $buffer = '';
 
+    private bool $buffering = false;
+
     public function __construct(
         private readonly OutputInterface $output,
     ) {
@@ -20,9 +22,12 @@ final class KernelDump
 
     public function enable(): void
     {
-        if (class_exists(Execution::class) && Execution::running()) {
+        if ((class_exists(Execution::class) && Execution::running())
+            || in_array('--list-test-ids', $_SERVER['argv'] ?? [], true)) {
             return;
         }
+
+        $this->buffering = true;
 
         ob_start(function (string $message): string {
             $this->buffer .= $message;
@@ -33,6 +38,12 @@ final class KernelDump
 
     public function disable(): void
     {
+        if (! $this->buffering) {
+            return;
+        }
+
+        $this->buffering = false;
+
         @ob_clean();
 
         if ($this->buffer !== '') {
