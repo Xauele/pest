@@ -35,15 +35,13 @@ final class NativeShardInventory
 
             $file = $test->file();
 
-            if ($test instanceof TestMethod) {
-                $class = $test->className();
+            $class = $test->className();
 
-                if (str_starts_with($class, 'P\\') && class_exists($class, false) && property_exists($class, '__filename')) {
-                    $original = $class::$__filename;
+            if (str_starts_with($class, 'P\\') && class_exists($class, false) && property_exists($class, '__filename')) {
+                $original = $class::$__filename;
 
-                    if (is_string($original) && $original !== '') {
-                        $file = $original;
-                    }
+                if (is_string($original) && $original !== '') {
+                    $file = $original;
                 }
             }
 
