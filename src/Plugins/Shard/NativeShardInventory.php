@@ -23,10 +23,10 @@ final class NativeShardInventory
     /** @var array<string, array<string, true>>|null */
     private static ?array $classesByFile = null;
 
-    /** @var array<string, float>|null */
+    /** @var array<string, mixed>|null */
     private static ?array $historicalTimings = null;
 
-    /** @param array<string, float>|null $timings */
+    /** @param array<string, mixed>|null $timings */
     public static function setHistoricalTimings(?array $timings): void
     {
         self::$historicalTimings = $timings;
@@ -177,6 +177,9 @@ final class NativeShardInventory
 
         /** @var list<float> $known */
         $known = [];
+
+        /** @var array<string, float> $validated */
+        $validated = [];
         $classCount = 0;
 
         foreach ($available as $filename) {
@@ -206,6 +209,7 @@ final class NativeShardInventory
                 }
 
                 $known[] = $duration;
+                $validated[$class] = $duration;
             }
         }
 
@@ -227,8 +231,8 @@ final class NativeShardInventory
             $weight = 0.0;
 
             foreach (array_keys(self::$classesByFile[$file]) as $class) {
-                $duration = self::$historicalTimings[$class] ?? $median;
-                $weight += max(0.000001, (float) $duration);
+                $duration = $validated[$class] ?? $median;
+                $weight += max(0.000001, $duration);
             }
 
             $weights[$file] = $weight;
