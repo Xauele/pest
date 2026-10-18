@@ -1,0 +1,62 @@
+name: Native Shard End-to-End Benchmark
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Measure whole Pest shard, not a microbenchmark
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          args=(bin/pest --configuration=phpunit.xml --parallel --processes=2 --shard=1/4 --exclude-group=integration --exclude-group=tia --colors=never)
+          for mode in legacy native; do
+            if [ "$mode" = native ]; then
+              env PEST_SHARD_NATIVE=1 php "\${args[@]}" > /dev/null
+            else
+              env -u PEST_SHARD_NATIVE php "\${args[@]}" > /dev/null
+            fi
+          done
+          for round in 1 2 3; do
+            if [ $((round % 2)) -eq 0 ]; then
+              modes=(native legacy)
+            else
+              modes=(legacy native)
+            fi
+            for mode in "\${modes[@]}"; do
+              if [ "$mode" = native ]; then
+                /usr/bin/time -o /tmp/native-shard-time.txt -f 'SHARD_BENCH elapsed_s=%e max_rss_kb=%M' \
+                  env PEST_SHARD_NATIVE=1 php "\${args[@]}" > /tmp/native-shard-out.txt
+              else
+                /usr/bin/time -o /tmp/native-shard-time.txt -f 'SHARD_BENCH elapsed_s=%e max_rss_kb=%M' \
+                  env -u PEST_SHARD_NATIVE php "\${args[@]}" > /tmp/native-shard-out.txt
+              fi
+              printf 'SHARD_BENCH mode=%s round=%s ' "$mode" "$round"
+              cat /tmp/native-shard-time.txt
+              grep -E 'Tests:|Shard:' /tmp/native-shard-out.txt | tail -n 3 || true
+            done
+          done
