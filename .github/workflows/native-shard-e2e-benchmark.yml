@@ -33,30 +33,79 @@ jobs:
           COLLISION_IGNORE_DURATION: 'true'
         run: |
           set -euo pipefail
-          args=(bin/pest --configuration=phpunit.xml --parallel --processes=2 --shard=1/4 --exclude-group=integration --exclude-group=tia --colors=never)
-          for mode in legacy native; do
-            if [ "$mode" = native ]; then
-              env PEST_SHARD_NATIVE=1 php "${args[@]}" > /dev/null
-            else
-              env -u PEST_SHARD_NATIVE php "${args[@]}" > /dev/null
+          mkdir -p /tmp/pest-shard-bench
+          metrics=/tmp/pest-shard-bench/metrics.csv
+          printf 'mode,round,shard,elapsed_seconds,peak_rss_kb\n' > "$metrics"
+          args=(bin/pest --configuration=phpunit.xml tests/Unit --parallel --processes=2 --exclude-group=integration --exclude-group=tia --colors=never)
+          run_one() {
+            local mode="$1" round="$2" shard="$3"
+            local out="/tmp/pest-shard-bench/${mode}-${round}-${shard}.log"
+            local timings="/tmp/pest-shard-bench/${mode}-${round}-${shard}.time"
+            local runner=(env -u PEST_SHARD_NATIVE)
+            if [[ "$mode" == native ]]; then runner=(env PEST_SHARD_NATIVE=1); fi
+            if ! /usr/bin/time -o "$timings" -f '%e,%M' "${runner[@]}" php "${args[@]}" "--shard=${shard}/4" > "$out" 2>&1; then
+              echo "::error::Shard benchmark failed: mode=${mode}, round=${round}, shard=${shard}"
+              tail -n 120 "$out"
+              exit 1
             fi
-          done
+            if ! grep -q 'Tests:' "$out"; then
+              echo "::error::Missing test result summary: mode=${mode}, round=${round}, shard=${shard}"
+              tail -n 100 "$out"
+              exit 1
+            fi
+            printf '%s,%s,%s,%s\n' "$mode" "$round" "$shard" "$(cat "$timings")" >> "$metrics"
+            printf 'SHARD_BENCH mode=%s round=%s shard=%s ' "$mode" "$round" "$shard"
+            cat "$timings"
+            grep 'Tests:' "$out" | tail -n 1
+          }
+          for mode in legacy native; do run_one "$mode" warmup 1; done
           for round in 1 2 3; do
-            if [ $((round % 2)) -eq 0 ]; then
-              modes=(native legacy)
-            else
-              modes=(legacy native)
-            fi
+            modes=(legacy native)
+            if (( round % 2 == 0 )); then modes=(native legacy); fi
             for mode in "${modes[@]}"; do
-              if [ "$mode" = native ]; then
-                /usr/bin/time -o /tmp/native-shard-time.txt -f 'SHARD_BENCH elapsed_s=%e max_rss_kb=%M' \
-                  env PEST_SHARD_NATIVE=1 php "${args[@]}" > /tmp/native-shard-out.txt
-              else
-                /usr/bin/time -o /tmp/native-shard-time.txt -f 'SHARD_BENCH elapsed_s=%e max_rss_kb=%M' \
-                  env -u PEST_SHARD_NATIVE php "${args[@]}" > /tmp/native-shard-out.txt
-              fi
-              printf 'SHARD_BENCH mode=%s round=%s ' "$mode" "$round"
-              cat /tmp/native-shard-time.txt
-              grep -E 'Tests:|Shard:' /tmp/native-shard-out.txt | tail -n 3 || true
+              for shard in 1 2 3 4; do run_one "$mode" "$round" "$shard"; done
             done
           done
+          python3 - <<'PY'
+          import csv
+          import re
+          from collections import defaultdict
+          from pathlib import Path
+          from statistics import median
+
+          root = Path('/tmp/pest-shard-bench')
+          rows = list(csv.DictReader((root / 'metrics.csv').open()))
+          rounds = defaultdict(dict)
+          signatures = {}
+          for row in rows:
+              if row['round'] == 'warmup':
+                  continue
+              mode, run, shard = row['mode'], int(row['round']), int(row['shard'])
+              result = (root / f'{mode}-{run}-{shard}.log').read_text(errors='replace')
+              summaries = re.findall(r'^\s*Tests:\s*(.+)$', result, re.MULTILINE)
+              if not summaries:
+                  raise SystemExit(f'Missing test summary: {mode}, {run}, {shard}')
+              counts = dict((name, int(count)) for count, name in re.findall(r'(\d+)\s+(deprecated|failed|warnings?|incomplete|notices?|todos?|skipped|passed)', summaries[-1]))
+              rounds[(mode, run)][shard] = (float(row['elapsed_seconds']), int(row['peak_rss_kb']), counts)
+
+          for run in (1, 2, 3):
+              totals = {}
+              for mode in ('legacy', 'native'):
+                  shard_results = rounds[(mode, run)]
+                  if set(shard_results) != {1, 2, 3, 4}:
+                      raise SystemExit(f'Incomplete benchmark round: {mode} / {run}')
+                  total_counts = defaultdict(int)
+                  for _, _, counts in shard_results.values():
+                      for label, value in counts.items():
+                          total_counts[label] += value
+                  totals[mode] = dict(total_counts)
+              if totals['legacy'] != totals['native']:
+                  raise SystemExit(f'Different test outcomes, cannot benchmark fairly: round={run}, legacy={totals["legacy"]}, native={totals["native"]}')
+
+          for mode in ('legacy', 'native'):
+              maxima = [max(rounds[(mode, run)][shard][0] for shard in range(1, 5)) for run in (1, 2, 3)]
+              sums = [sum(rounds[(mode, run)][shard][0] for shard in range(1, 5)) for run in (1, 2, 3)]
+              peak_rss = max(rounds[(mode, run)][shard][1] for run in (1, 2, 3) for shard in range(1, 5))
+              print(f'SHARD_BENCH_SUMMARY mode={mode} median_max_shard_s={median(maxima):.3f} median_sum_shards_s={median(sums):.3f} max_root_rss_kb={peak_rss}')
+          print('SHARD_BENCH_NOTE: sequential isolated shards; median max-shard is a proxy, not measured concurrent CI wall time')
+          PY

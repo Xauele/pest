@@ -88,7 +88,6 @@ it('rejects duplicated test execution evidence from independent workers', functi
         ->and(file_exists($secondPath))->toBeFalse();
 })->group('integration');
 
-
 it('rejects duplicate completions inside a single worker using the native finished event', function (): void {
     RunIntegrity::activate();
     RunIntegrity::observeFinished('P\Tests\Duplicated::test_case');

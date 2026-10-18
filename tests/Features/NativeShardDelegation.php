@@ -69,31 +69,29 @@ it('fails closed when a ParaTest worker collects fewer PHPUnit dataset rows than
         ->and($output)->toContain('Shard integrity failed: 1 missing and 0 unexpected test IDs');
 })->group('integration');
 
-it('attests native PHPT and PHPUnit tests across parallel shards', function (): void {
-    foreach (['1/2', '2/2'] as $shard) {
-        $process = new Process(
-            [
-                PHP_BINARY,
-                'bin/pest',
-                '--configuration=tests/Fixtures/Suites/NativeShardPhpt.xml',
-                '--parallel',
-                '--processes=2',
-                '--shard='.$shard,
-            ],
-            dirname(__DIR__, 2),
-            [
-                'PEST_SHARD_NATIVE' => '1',
-                'COLLISION_PRINTER' => 'DefaultPrinter',
-                'COLLISION_IGNORE_DURATION' => 'true',
-                'PAO_DISABLE' => '1',
-            ],
-        );
-        $process->setTimeout(90);
-        $process->run();
-        $output = removeAnsiEscapeSequences($process->getOutput().$process->getErrorOutput());
+it('rejects unsupported PHPT test types before launching ParaTest workers', function (): void {
+    $process = new Process(
+        [
+            PHP_BINARY,
+            'bin/pest',
+            '--configuration=tests/Fixtures/Suites/NativeShardPhpt.xml',
+            '--parallel',
+            '--processes=2',
+            '--shard=1/2',
+        ],
+        dirname(__DIR__, 2),
+        [
+            'PEST_SHARD_NATIVE' => '1',
+            'COLLISION_PRINTER' => 'DefaultPrinter',
+            'COLLISION_IGNORE_DURATION' => 'true',
+            'PAO_DISABLE' => '1',
+        ],
+    );
+    $process->setTimeout(90);
+    $process->run();
+    $output = removeAnsiEscapeSequences($process->getOutput().$process->getErrorOutput());
 
-        expect($process->getExitCode())->toBe(0, $output)
-            ->and($output)->toContain('1 passed')
-            ->and($output)->not->toContain('Shard integrity failed');
-    }
+    expect($process->getExitCode())->not->toBe(0, $output)
+        ->and($output)->toContain('Native parallel shards currently support PHPUnit test methods only')
+        ->and($output)->not->toContain('WorkerCrashedException');
 })->group('integration');

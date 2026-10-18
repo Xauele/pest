@@ -680,15 +680,9 @@ final class WrapperRunner implements RunnerInterface
                 throw new RuntimeException('Invalid native ParaTest shard configuration.');
             }
 
-            $selected = [];
-
-            foreach ($allFiles as $position => $filename) {
-                if ($position % $total === $index - 1) {
-                    $selected[] = $filename;
-                }
-            }
-
+            $selected = NativeShardInventory::selectFiles($allFiles, $index, $total);
             $expected = NativeShardInventory::selectedIds($selected);
+            NativeShardInventory::release();
             Shard::recordNativeFileAllocation($index, $total, count($selected), count($allFiles), $expected);
 
             return $selected;

@@ -8,6 +8,7 @@ use Pest\TestSuite;
 use PHPUnit\Event\Code\Test;
 use PHPUnit\Event\Code\TestMethod;
 use RuntimeException;
+use SplPriorityQueue;
 
 /**
  * @internal Native PHPUnit discovery oracle for the experimental ParaTest fast path.
@@ -25,6 +26,13 @@ final class NativeShardInventory
         $byFile = [];
 
         foreach ($tests as $test) {
+            if (! $test instanceof TestMethod) {
+                throw new RuntimeException(sprintf(
+                    'Native parallel shards currently support PHPUnit test methods only. Unsupported test type [%s]; run PHPT tests without ParaTest.',
+                    get_debug_type($test),
+                ));
+            }
+
             $file = $test->file();
 
             if ($test instanceof TestMethod) {
@@ -79,6 +87,100 @@ final class NativeShardInventory
         }
 
         return array_values($files);
+    }
+
+    /**
+     * Assign whole files to shards by native PHPUnit test-case counts, rather than
+     * by file position. This is a deterministic LPT approximation, not a claim
+     * that test-count weights are equivalent to observed execution times.
+     *
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>
+     */
+    public static function selectFiles(array $available, int $index, int $total): array
+    {
+        if (self::$byFile === null) {
+            throw new RuntimeException('Native PHPUnit test inventory is missing.');
+        }
+
+        /** @var array<non-empty-string, int> $weights */
+        $weights = [];
+
+        foreach ($available as $filename) {
+            $canonical = self::canonicalFile($filename);
+
+            if (! isset(self::$byFile[$canonical])) {
+                throw new RuntimeException('Native shard cannot allocate an undiscovered file: '.$canonical);
+            }
+
+            $weights[$canonical] = count(self::$byFile[$canonical]);
+        }
+
+        return self::allocateByTestCount($weights, $index, $total);
+    }
+
+    /**
+     * @param  array<non-empty-string, int>  $testCounts
+     * @return list<non-empty-string>
+     */
+    public static function allocateByTestCount(array $testCounts, int $index, int $total): array
+    {
+        if ($total < 1 || $index < 1 || $index > $total) {
+            throw new RuntimeException('Invalid native shard index or total.');
+        }
+
+        foreach ($testCounts as $count) {
+            if ($count < 1) {
+                throw new RuntimeException('Native shard weights require at least one discovered test per file.');
+            }
+        }
+
+        $files = array_keys($testCounts);
+        usort($files, static fn (string $left, string $right): int => ($testCounts[$right] <=> $testCounts[$left]) ?: strcmp($left, $right));
+
+        // Empty shards do not need heap entries; this bounds allocation memory
+        // to O(min(files, shards)), even for a very large shard count.
+        $activeShards = min($total, count($files));
+
+        if ($index > $activeShards) {
+            return [];
+        }
+
+        /** @var SplPriorityQueue<int, array{int, int}> $queue */
+        $queue = new SplPriorityQueue;
+        $queue->setExtractFlags(SplPriorityQueue::EXTR_DATA);
+
+        /** @var array<int, int> $loads */
+        $loads = [];
+
+        for ($shard = 1; $shard <= $activeShards; $shard++) {
+            $loads[$shard] = 0;
+            $queue->insert($shard, [0, -$shard]);
+        }
+
+        $selected = [];
+
+        foreach ($files as $filename) {
+            $shard = $queue->extract();
+
+            if ($shard === $index) {
+                $selected[] = $filename;
+            }
+
+            $loads[$shard] += $testCounts[$filename];
+            $queue->insert($shard, [-$loads[$shard], -$shard]);
+        }
+
+        return $selected;
+    }
+
+    /**
+     * Drop the discovery catalogue before starting workers. The selected ID
+     * manifest is already copied into RunIntegrity by the caller.
+     */
+    public static function release(): void
+    {
+        self::$byFile = null;
     }
 
     /**
