@@ -42,3 +42,30 @@ it('uses the native ParaTest suite inventory for Pest and PHPUnit sharding', fun
     ['ShardIntegrity.xml', '1 passed'],
     ['ShardIntegrityPest.xml', '1 passed'],
 ])->group('integration');
+
+
+it('fails closed when a ParaTest worker collects fewer PHPUnit dataset rows than the parent', function (): void {
+    $process = new Process(
+        [
+            PHP_BINARY,
+            'bin/pest',
+            '--configuration=tests/Fixtures/Suites/NativeShardWorkerDataset.xml',
+            '--parallel',
+            '--processes=2',
+            '--shard=1/2',
+        ],
+        dirname(__DIR__, 2),
+        [
+            'PEST_SHARD_NATIVE' => '1',
+            'COLLISION_PRINTER' => 'DefaultPrinter',
+            'COLLISION_IGNORE_DURATION' => 'true',
+            'PAO_DISABLE' => '1',
+        ],
+    );
+    $process->setTimeout(90);
+    $process->run();
+    $output = removeAnsiEscapeSequences($process->getOutput().$process->getErrorOutput());
+
+    expect($process->getExitCode())->not->toBe(0, $output)
+        ->and($output)->toContain('Shard integrity failed: 1 missing and 0 unexpected test IDs');
+})->group('integration');
