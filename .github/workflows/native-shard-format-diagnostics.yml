@@ -27,3 +27,14 @@ jobs:
         run: |
           vendor/bin/pint src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
           git diff --exit-code -- src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
+
+      - name: Show success snapshot regeneration delta
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          REBUILD_SNAPSHOTS=1 php bin/pest --filter='visual snapshot of test suite on success' > /tmp/native-snapshot-rebuild.log 2>&1 || { tail -n 120 /tmp/native-snapshot-rebuild.log; exit 1; }
+          git diff --no-ext-diff -- tests/.snapshots/success.txt

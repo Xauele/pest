@@ -92,6 +92,6 @@ it('rejects unsupported PHPT test types before launching ParaTest workers', func
     $output = removeAnsiEscapeSequences($process->getOutput().$process->getErrorOutput());
 
     expect($process->getExitCode())->not->toBe(0, $output)
-        ->and($output)->toContain('Native parallel shards currently support PHPUnit test methods only')
+        ->and($output)->toContain('Native parallel sharding requires a PHPUnit test inventory')
         ->and($output)->not->toContain('WorkerCrashedException');
 })->group('integration');

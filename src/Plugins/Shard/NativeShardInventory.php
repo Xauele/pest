@@ -65,7 +65,7 @@ final class NativeShardInventory
     public static function filterDiscoveredFiles(array $available): array
     {
         if (self::$byFile === null) {
-            throw new RuntimeException('Native PHPUnit discovery inventory is missing.');
+            throw new RuntimeException('Native parallel sharding requires a PHPUnit test inventory. This suite may contain unsupported PHPT tests; retry without PEST_SHARD_NATIVE=1.');
         }
 
         $files = [];
