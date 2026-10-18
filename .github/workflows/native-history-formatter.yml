@@ -29,3 +29,15 @@ jobs:
           vendor/bin/pint src/Plugins/Shard/NativeShardInventory.php
           git diff -- src/Plugins/Shard/NativeShardInventory.php
           git diff --exit-code -- src/Plugins/Shard/NativeShardInventory.php
+
+      - name: Show expected success snapshot changes
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          REBUILD_SNAPSHOTS=1 php bin/pest --filter='visual snapshot of test suite on success' > /tmp/native-history-snapshot.log 2>&1 || true
+          git diff --no-ext-diff -- tests/.snapshots/success.txt
