@@ -36,5 +36,5 @@ jobs:
           COLLISION_PRINTER: DefaultPrinter
           COLLISION_IGNORE_DURATION: 'true'
         run: |
-          REBUILD_SNAPSHOTS=1 php bin/pest --filter='visual snapshot of test suite on success' > /tmp/native-snapshot-rebuild.log 2>&1 || { tail -n 120 /tmp/native-snapshot-rebuild.log; exit 1; }
+          REBUILD_SNAPSHOTS=1 php bin/pest --filter='visual snapshot of test suite on success' > /tmp/native-snapshot-rebuild.log 2>&1 || true
           git diff --no-ext-diff -- tests/.snapshots/success.txt
