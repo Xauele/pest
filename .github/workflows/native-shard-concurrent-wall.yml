@@ -23,11 +23,35 @@ jobs:
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
         run: composer update --prefer-stable --no-interaction --no-progress
-      - name: Prepare complete real suite without CustomAffixes exclusion
+      - name: Isolated mutable TIA replay contract remains part of full CI
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          php bin/pest tests/Features/Tia.php --colors=never > /tmp/tia-hooks-standalone.log 2>&1 || { cat /tmp/tia-hooks-standalone.log; exit 1; }
+          cat /tmp/tia-hooks-standalone.log
+          grep -Eq 'Tests:[[:space:]]+1 passed' /tmp/tia-hooks-standalone.log
+          echo 'NATIVE_SHARD_TIA_ISOLATED_CONTRACT=PASS'
+      - name: Prepare reproducible concurrent suite (non-hermetic TIA replay fixture isolated)
         shell: bash
         run: |
-          cp phpunit.xml phpunit.native-concurrent-benchmark.xml
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('phpunit.xml').read_text()
+          needle = '      <exclude>./tests/Fixtures/Tia</exclude>'
+          if source.count(needle) != 1:
+              raise SystemExit('Cannot locate controlled PHPUnit source exclusions')
+          source = source.replace(needle, needle + '\n      <exclude>./tests/Features/Tia.php</exclude>')
+          Path('phpunit.native-concurrent-benchmark.xml').write_text(source)
+          PY
           echo 'CONCURRENT_CUSTOM_AFFIXES_INCLUDED=true'
+          echo 'CONCURRENT_MUTATING_TIA_FIXTURE_EXCLUDED_FROM_BOTH_MODES=true'
       - name: Run four actual shard processes simultaneously
         shell: bash
         env:
