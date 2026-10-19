@@ -2,8 +2,8 @@
 
 use Pest\Exceptions\InvalidOption;
 use Pest\Plugins\Shard;
-use SebastianBergmann\CliParser\Parser;
 use PHPUnit\Runner\Version;
+use SebastianBergmann\CliParser\Parser;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
