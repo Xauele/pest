@@ -1,0 +1,141 @@
+name: Native Historical Real Pest Suite
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  real_suite:
+    if: startsWith(github.head_ref, 'experiment/native-history-scheduler-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Collect actual class times on representative native Pest suite
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('phpunit.xml').read_text()
+          needle = '      <exclude>./tests/Fixtures/Tia</exclude>'
+          if root.count(needle) != 1:
+              raise SystemExit('Cannot create explicit reproducible benchmark suite')
+          root = root.replace(needle, needle + '\n      <exclude>./tests/PHPUnit/CustomAffixes</exclude>')
+          Path('phpunit.native-history.xml').write_text(root)
+          print('HISTORY_REAL_SUITE_EXCLUSION=tests/PHPUnit/CustomAffixes (randomized test class names)')
+          PY
+          if [ -f tests/.pest/shards.json ]; then
+            echo '::error::Benchmark cannot overwrite existing shard history'
+            exit 1
+          fi
+          if ! php bin/pest --configuration=phpunit.native-history.xml --update-shards --parallel --processes=2 --exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test --colors=never > /tmp/history-training.log 2>&1; then
+            tail -n 120 /tmp/history-training.log
+            exit 1
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p = Path('tests/.pest/shards.json')
+          if not p.is_file():
+              raise SystemExit('No timing history produced by native PHPUnit/Pest telemetry')
+          d = json.loads(p.read_text())
+          timings = d.get('timings', {})
+          if len(timings) < 75:
+              raise SystemExit(f'Expected a real per-class timing inventory, got {len(timings)} classes')
+          print('HISTORY_REAL_TRAINED_CLASSES=', len(timings))
+          PY
+      - name: Three paired rounds measuring all four concurrent shards
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import time
+          import xml.etree.ElementTree as ET
+          from collections import Counter
+          from pathlib import Path
+          from statistics import median
+
+          root = Path('/tmp/native-real-history')
+          root.mkdir(exist_ok=True)
+          base = ['php', 'bin/pest', '--configuration=phpunit.native-history.xml', '--parallel', '--processes=2',
+                  '--exclude-group=integration', '--exclude-group=tia', '--exclude-group=shard-state-self-test',
+                  '--colors=never']
+          modes = ['legacy', 'native']
+          results = {}
+          for round_no in (1, 2, 3):
+              order = modes if round_no % 2 == 1 else list(reversed(modes))
+              for mode in order:
+                  env = os.environ.copy()
+                  env.pop('PEST_SHARD_NATIVE', None)
+                  env.pop('PEST_NATIVE_SHARD_ALLOCATION', None)
+                  if mode == 'native':
+                      env['PEST_SHARD_NATIVE'] = '1'
+                      env['PEST_NATIVE_SHARD_ALLOCATION'] = 'history'
+                  running = []
+                  start = time.perf_counter()
+                  for shard in (1, 2, 3, 4):
+                      prefix = root / f'{round_no}-{mode}-{shard}'
+                      output = open(str(prefix) + '.log', 'w')
+                      args = base + [f'--shard={shard}/4', f'--log-junit={prefix}.xml']
+                      worker = subprocess.Popen(args, env=env, stdout=output, stderr=subprocess.STDOUT)
+                      running.append((shard, worker, output, prefix))
+                  observations = Counter()
+                  for shard, worker, output, prefix in running:
+                      try:
+                          exit_code = worker.wait(timeout=150)
+                      finally:
+                          output.close()
+                      if exit_code:
+                          print(f'REAL_HISTORY_FAILED mode={mode} round={round_no} shard={shard} exit={exit_code}')
+                          print(Path(str(prefix) + '.log').read_text(errors='replace')[-10000:])
+                          raise SystemExit(1)
+                      junit = Path(str(prefix) + '.xml')
+                      if not junit.exists():
+                          raise SystemExit('No JUnit evidence: ' + str(junit))
+                      tests = [(node.get('classname'), node.get('name')) for node in ET.parse(junit).iter('testcase')]
+                      observations.update(tests)
+                  elapsed = time.perf_counter() - start
+                  if sum(observations.values()) < 1200:
+                      raise SystemExit(f'Unexpected small real suite: {sum(observations.values())}')
+                  results[(round_no, mode)] = (elapsed, observations)
+                  print(f'HISTORY_REAL_WALL round={round_no} mode={mode} seconds={elapsed:.3f} junit_rows={sum(observations.values())}')
+          for round_no in (1, 2, 3):
+              legacy = results[(round_no, 'legacy')][1]
+              native = results[(round_no, 'native')][1]
+              if legacy != native:
+                  print('HISTORY_REAL_MISSING=', list((legacy - native).items())[:10])
+                  print('HISTORY_REAL_UNEXPECTED=', list((native - legacy).items())[:10])
+                  raise SystemExit('Native historical suite no longer runs the same exact JUnit multiset')
+              print('HISTORY_REAL_MULTISET_PARITY=PASS round=', round_no)
+          summary = {mode: median(results[(r, mode)][0] for r in (1, 2, 3)) for mode in modes}
+          for mode, seconds in summary.items():
+              print(f'HISTORY_REAL_MEDIAN_CONCURRENT_WALL mode={mode} seconds={seconds:.3f}')
+          print(f'HISTORY_REAL_SPEEDUP_NATIVE_VS_LEGACY={summary["legacy"]/summary["native"]:.2f}x')
+          print('HISTORY_REAL_LIMIT=JUnit names are not a unique raw identity oracle; process-level native attestation is also required')
+          PY

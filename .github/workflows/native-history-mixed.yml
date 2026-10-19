@@ -1,0 +1,87 @@
+name: Native Historical Mixed Suite Regression
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  mixed:
+    if: startsWith(github.head_ref, 'experiment/native-history-scheduler-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Compare timing keys from Pest-generated and native PHPUnit classes
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p = Path('tests/.pest/shards.json')
+          if p.exists():
+              raise SystemExit('Refusing to overwrite an existing historical profile')
+          p.parent.mkdir(parents=True, exist_ok=True)
+          p.write_text(json.dumps({'timings': {
+              'Tests\\Fixtures\\Suites\\ShardIntegrityOne': 0.3,
+              'Tests\\Fixtures\\Suites\\ShardIntegrityTwo': 0.5,
+              'Tests\\Fixtures\\Suites\\ShardIntegrityPhpUnitTest': 0.1,
+          }}))
+          PY
+          for mode in legacy native; do
+            for shard in 1 2; do
+              prefix="/tmp/mixed-$mode-$shard"
+              if [ "$mode" = native ]; then
+                env PEST_SHARD_NATIVE=1 PEST_NATIVE_SHARD_ALLOCATION=history php bin/pest --configuration=tests/Fixtures/Suites/ShardIntegrity.xml --parallel --processes=2 --colors=never "--shard=$shard/2" "--log-junit=$prefix.xml" > "$prefix.log" 2>&1 || { cat "$prefix.log"; exit 1; }
+                grep -q '(time-balanced)' "$prefix.log" || { cat "$prefix.log"; exit 1; }
+              else
+                env -u PEST_SHARD_NATIVE php bin/pest --configuration=tests/Fixtures/Suites/ShardIntegrity.xml --parallel --processes=2 --colors=never "--shard=$shard/2" "--log-junit=$prefix.xml" > "$prefix.log" 2>&1 || { cat "$prefix.log"; exit 1; }
+              fi
+            done
+          done
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          def ids(mode):
+              all_rows = []
+              for shard in (1,2):
+                  all_rows.extend((t.get('classname'), t.get('name')) for t in ET.parse(f'/tmp/mixed-{mode}-{shard}.xml').iter('testcase'))
+              return all_rows
+          old, native = ids('legacy'), ids('native')
+          print('MIXED_NATIVE_HISTORICAL_ROWS', len(native))
+          if len(old) != 3 or len(native) != 3 or sorted(old) != sorted(native):
+              raise SystemExit(f'Mixed suite test identities diverged: old={old}, native={native}')
+          print('MIXED_NATIVE_HISTORICAL_PARITY=PASS')
+          PY
+      - name: Remove timing data and prove cold path remains deterministic
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          rm tests/.pest/shards.json
+          for shard in 1 2; do
+            env PEST_SHARD_NATIVE=1 php bin/pest --configuration=tests/Fixtures/Suites/ShardIntegrity.xml --parallel --processes=2 --colors=never "--shard=$shard/2" > /tmp/native-cold-mixed.log 2>&1 || { cat /tmp/native-cold-mixed.log; exit 1; }
+            if grep -q '(time-balanced)' /tmp/native-cold-mixed.log; then echo '::error::Cold history unexpectedly used'; exit 1; fi
+          done
+          echo 'NATIVE_HISTORY_COLD_PATH=PASS'

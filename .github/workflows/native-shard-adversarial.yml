@@ -1,0 +1,131 @@
+name: Native Shard Adversarial Semantics
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  prefix_identity:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Adversarial identity counterexample
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          args=(bin/pest --configuration=tests/Fixtures/Suites/NativeShardPrefixCollision.xml --parallel --processes=2 --colors=never)
+          env -u PEST_SHARD_NATIVE php "${args[@]}" > /tmp/native-prefix-control.log 2>&1 || { cat /tmp/native-prefix-control.log; exit 1; }
+          cat /tmp/native-prefix-control.log
+          echo 'The unsharded control may also execute incidental bootstrapped test files; asserting native identity separately.'
+          proof_dir=$(mktemp -d /tmp/native-prefix-XXXXXX)
+          php bin/pest --configuration=tests/Fixtures/Suites/NativeShardPrefixCollision.xml --list-test-ids > /tmp/native-prefix-raw-ids.txt
+          cat /tmp/native-prefix-raw-ids.txt
+          grep -Fq 'P\NativeShardProof\CollisionTest::test_identity' /tmp/native-prefix-raw-ids.txt
+          grep -Fq 'NativeShardProof\CollisionTest::test_identity' /tmp/native-prefix-raw-ids.txt
+          if ! env PEST_NATIVE_PREFIX_PROOF_DIR="$proof_dir" PEST_SHARD_NATIVE=1 php "${args[@]}" --shard=1/1 --log-junit=/tmp/native-prefix-proof.xml > /tmp/native-prefix-probe.log 2>&1; then
+            echo "::error::Native path failed on two distinct PHPUnit classes P\\NativeShardProof\\CollisionTest and NativeShardProof\\CollisionTest."
+            cat /tmp/native-prefix-probe.log
+            exit 1
+          fi
+          cat /tmp/native-prefix-probe.log
+          grep -q '2 passed' /tmp/native-prefix-probe.log
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          cases = [(x.get('classname') or '', x.get('name') or '') for x in ET.parse('/tmp/native-prefix-proof.xml').iter('testcase')]
+          print('REPORTER_TEST_NAMES=', cases)
+          if len(cases) != 2:
+              raise SystemExit(f'Expected two JUnit rows, got: {cases}')
+          print('JUNIT_NAME_COLLISION=', len(set(cases)) != len(cases))
+          PY
+          test "$(cat "$proof_dir/p-prefix")" = 'P-PREFIX'
+          test "$(cat "$proof_dir/normal")" = 'NORMAL'
+          rm "$proof_dir/p-prefix" "$proof_dir/normal"
+          for shard in 1/2 2/2; do
+            log="/tmp/native-prefix-$(echo "$shard" | tr / -).log"
+            if ! env PEST_NATIVE_PREFIX_PROOF_DIR="$proof_dir" PEST_SHARD_NATIVE=1 php "${args[@]}" "--shard=$shard" > "$log" 2>&1; then
+              echo "::error::Native prefix pair failed while testing $shard"
+              cat "$log"
+              exit 1
+            fi
+          done
+          test "$(cat "$proof_dir/p-prefix")" = 'P-PREFIX'
+          test "$(cat "$proof_dir/normal")" = 'NORMAL'
+          echo 'INDEPENDENT_PREFIX_EXECUTION_PROOF=PASS'
+          echo 'COUNTEREXAMPLE_P_NAMESPACE_CANONICAL_IDS=PASS'
+          for repeat in 1 2 3; do
+            php bin/pest --configuration=tests/Fixtures/Suites/NativeClassIdentity.xml --list-test-ids --colors=never > "/tmp/native-class-id-$repeat.txt"
+          done
+          echo 'NATIVE_CLASS_IDS:'
+          cat /tmp/native-class-id-1.txt
+          grep -q '::' /tmp/native-class-id-1.txt
+          diff -u /tmp/native-class-id-1.txt /tmp/native-class-id-2.txt
+          diff -u /tmp/native-class-id-1.txt /tmp/native-class-id-3.txt
+          env PEST_SHARD_NATIVE=1 php bin/pest --configuration=tests/Fixtures/Suites/NativeClassIdentity.xml --parallel --processes=2 --shard=1/1 --colors=never > /tmp/native-class-parallel.log 2>&1 || { cat /tmp/native-class-parallel.log; exit 1; }
+          grep -q '2 passed' /tmp/native-class-parallel.log || { cat /tmp/native-class-parallel.log; exit 1; }
+          echo 'DETERMINISTIC_NON_IDENTIFIER_FILENAME_IDS=PASS'
+
+  empty_shard:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Empty shard must never be false green or false red
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          args=(bin/pest --configuration=tests/Fixtures/Suites/ShardIntegrityPhpUnit.xml --parallel --processes=2 --shard=8/8 --colors=never)
+          set +e
+          env -u PEST_SHARD_NATIVE php "${args[@]}" > /tmp/empty-legacy.log 2>&1
+          legacy=$?
+          env PEST_SHARD_NATIVE=1 php "${args[@]}" > /tmp/empty-native.log 2>&1
+          native=$?
+          set -e
+          echo "COUNTEREXAMPLE_EMPTY_SHARD legacy_exit=$legacy native_exit=$native"
+          echo "LEGACY"; cat /tmp/empty-legacy.log
+          echo "NATIVE"; cat /tmp/empty-native.log
+          if [[ "$legacy" -ne "$native" ]]; then
+            echo "::error::Semantically equivalent empty shards return different exit codes."
+            exit 1
+          fi
+          if [[ "$native" -ne 0 ]]; then
+            echo "::error::The natural empty shard must succeed unless the caller explicitly requests failure-on-empty."
+            exit 1
+          fi
+          grep -q 'Shard:' /tmp/empty-native.log

@@ -1285,6 +1285,12 @@
   ✓ a "describe" group of tests → it is a test
   ✓ a "describe" group of tests → it is a higher order message test
 
+   PASS  Tests\Features\NativeShardDelegation
+  ✓ it uses the native ParaTest suite inventory for Pest and PHPUnit sharding with ('ShardIntegrity.xml', '1 passed')
+  ✓ it uses the native ParaTest suite inventory for Pest and PHPUnit sharding with ('ShardIntegrityPest.xml', '1 passed')
+  ✓ it fails closed when a ParaTest worker collects fewer PHPUnit dataset rows than the parent
+  ✓ it rejects unsupported PHPT test types before launching ParaTest workers
+
    PASS  Tests\Features\Note
   ✓ it may have a static note
   // This is before each static note
@@ -1547,6 +1553,30 @@
    PASS  Tests\Features\See
   ✓ it can reference a specific class
   ✓ it can reference a specific class method
+
+   PASS  Tests\Features\ShardIntegrity
+  ✓ it does not execute the whole suite when a shard has no assigned classes with (false)
+  ✓ it does not execute the whole suite when a shard has no assigned classes with (true)
+  ✓ it accounts for every class across non-parallel shards, including PHPUnit classes
+  ✓ it accounts for all selected Pest classes in parallel shards
+  ✓ it cannot silently certify a lost PHPUnit class with parallel sharding
+  ✓ it dispatches every class in mixed Pest and PHPUnit suites across parallel shards
+  ✓ it accepts space-separated parallel worker counts during discovery
+  ✓ it attests intentionally skipped PHPUnit classes in serial and parallel mode with (false)
+  ✓ it attests intentionally skipped PHPUnit classes in serial and parallel mode with (true)
+  ✓ it dispatches Unicode PHPUnit classes in serial and parallel shards with (false)
+  ✓ it dispatches Unicode PHPUnit classes in serial and parallel shards with (true)
+  ✓ it does not run classes from a different parent namespace across serial and parallel shards with (false)
+  ✓ it does not run classes from a different parent namespace across serial and parallel shards with (true)
+  ✓ it rejects a missing dataset row in a green PHPUnit class, serial and parallel with (false)
+  ✓ it rejects a missing dataset row in a green PHPUnit class, serial and parallel with (true)
+  ✓ it attests every PHPUnit dataset row, not merely its class with (false)
+  ✓ it attests every PHPUnit dataset row, not merely its class with (true)
+  ✓ it attests every generated Pest dataset row, not merely its class with (false)
+  ✓ it attests every generated Pest dataset row, not merely its class with (true)
+  ✓ it rejects a missing Pest dataset row after discovery with (false)
+  ✓ it rejects a missing Pest dataset row after discovery with (true)
+  ✓ it keeps native PHPUnit test IDs byte-for-byte intact in CLI output
 
    WARN  Tests\Features\Skip
   ✓ it do not skips
@@ -1850,58 +1880,96 @@
   ✓ ensureFilterLengthIsSafe → it accepts filter within custom limit
   ✓ handleArguments → it returns original arguments when shard option is not present
   ✓ handleArguments → it removes parallel arguments from test discovery
-  ✓ parseListTestsOutput → it parses Tests\ namespaced classes from --list-tests output
-  ✓ parseListTestsOutput → it deduplicates repeated class names from multiple test methods
-  ✓ parseListTestsOutput → it returns an empty list for output with no matching lines
-  ✓ parseListTestsOutput → it parses non-Tests namespaced classes
-  ✓ parseListTestsOutput → it parses unnamespaced top-level classes
-  ✓ parseListTestsOutput → it strips the P\ Pest prefix but keeps the rest of the FQCN
-  ✓ parseListTestsOutput → it ignores junk lines that lack the " - …::" framing
-  ✓ buildListTestsCommand → it builds the list-tests command with the forwarded --test-directory
-  ✓ buildListTestsCommand → it strips --parallel and -p when building the list-tests command
-  ✓ buildListTestsCommand → it forwards --test-directory even when input arguments include one
-  ✓ buildListTestsCommand → it strips --processes=N when building the list-tests command
-  ✓ buildListTestsCommand → it strips --processes N (space-separated) when building the list-tests command
+  ✓ parseListTestIdsOutput → it parses Tests\ namespaced classes from --list-test-ids output
+  ✓ parseListTestIdsOutput → it deduplicates repeated class names from multiple test methods
+  ✓ parseListTestIdsOutput → it rejects unknown test entries instead of silently certifying a partial inventory
+  ✓ parseListTestIdsOutput → it rejects native and generated class names that collide after normalisation
+  ✓ parseListTestIdsOutput → it handles ANSI-styled test discovery without losing class names
+  ✓ parseListTestIdsOutput → it parses Unicode PHP class identifiers from native and generated test entries
+  ✓ parseListTestIdsOutput → it returns an empty list for a genuinely empty inventory
+  ✓ parseListTestIdsOutput → it parses non-Tests namespaced classes
+  ✓ parseListTestIdsOutput → it parses unnamespaced top-level classes
+  ✓ parseListTestIdsOutput → it strips the P\ Pest prefix but keeps the rest of the FQCN
+  ✓ parseListTestIdsOutput → it ignores framing blank lines around a native PHPUnit ID inventory
+  ✓ parseListTestIdsOutput → it accepts the exact native PHPUnit CLI version header without treating it as a test
+  ✓ parseListTestIdsOutput → it rejects injected diagnostics mixed with native test IDs
+  ✓ parseListTestIdsOutput → it rejects duplicated method and dataset IDs
+  ✓ parseListTestIdsOutput → it retains a canonical ID for each dataset row in native discovery
+  ✓ buildListTestIdsCommand → it keeps TIA disabled during machine-readable discovery even when requested on the parent
+  ✓ buildListTestIdsCommand → it builds the list-test-ids command with the forwarded --test-directory
+  ✓ buildListTestIdsCommand → it strips --parallel and -p when building the list-test-ids command
+  ✓ buildListTestIdsCommand → it forwards --test-directory even when input arguments include one
+  ✓ buildListTestIdsCommand → it strips --processes=N when building the list-test-ids command
+  ✓ buildListTestIdsCommand → it strips --processes N (space-separated) when building the list-test-ids command
   ✓ addOutput → it displays shard information after test execution
   ✓ addOutput → it uses singular form for single test file
   ✓ addOutput → it returns original exit code when shard is not set
+  ✓ native time-balanced shard allocation → it matches the original deterministic allocation with ties, zero times and large shard counts
+
+   PASS  Tests\Unit\Plugins\Shard\NativeShardInventory
+  ✓ it preserves stable discovery-order allocation without assuming test counts predict duration
+  ✓ it uses measured durations to split expensive files rather than counting cases
+  ✓ it assigns every estimated-duration file once and is invariant to insertion order
+  ✓ it rejects corrupt duration weights without silently producing a green plan
+  ✓ it allocates whole files by discovered test counts rather than file order
+  ✓ it reproducibly assigns each file once across shard counts including empty shards
+  ✓ it uses a lexical file-name tie break for equal test counts
+  ✓ it rejects invalid shard coordinates and invalid native discovery weights
+
+   PASS  Tests\Unit\Plugins\Shard\RunIntegrity
+  ✓ it records only active runs and normalises generated Pest class names
+  ✓ it preserves exact native PHPUnit IDs for unrelated P-namespaced classes
+  ✓ it detects missing and unexpected test IDs without relying on assertion counts
+  ✓ it aggregates parallel worker evidence without duplicate classes
+  ✓ it fails closed on corrupted worker evidence
+  ✓ it fails a green run if one assigned test ID never completed
+  ✓ it rejects duplicated test execution evidence from independent workers
+  ✓ it rejects duplicate completions inside a single worker using the native finished event
+  ✓ it accepts one native skipped and one finished event for the same execution
+  ✓ it rejects repeated skipped notifications for the same native test
 
    PASS  Tests\Unit\Plugins\Tia\ContentHash
   ✓ of() → it returns false when file does not exist
   ✓ of() → it hashes an existing file
-  ✓ PHP files → it produces the same hash regardless of whitespace differences
-  ✓ PHP files → it ignores single-line comments
-  ✓ PHP files → it ignores hash-style comments
-  ✓ PHP files → it ignores multi-line comments
-  ✓ PHP files → it ignores doc comments
+  ✓ PHP files → it detects whitespace differences that may change __LINE__
+  ✓ PHP files → it detects single-line comments that source tooling may inspect
+  ✓ PHP files → it detects hash-style comments conservatively
+  ✓ PHP files → it detects multi-line comments conservatively
+  ✓ PHP files → it detects reflection-visible PHPDoc annotations
   ✓ PHP files → it detects code changes
   ✓ PHP files → it preserves whitespace inside string literals
   ✓ PHP files → it treats variable renames as a change
   ✓ PHP files → it falls back to a raw hash for unparseable PHP
-  ✓ PHP files → it is case-insensitive on the file extension
-  ✓ Blade files → it strips blade comments
-  ✓ Blade files → it strips multi-line blade comments
-  ✓ Blade files → it collapses whitespace
+  ✓ PHP files → it does not hide different PHP bytes behind extension casing
+  ✓ Blade files → it detects Blade comments in source fingerprints
+  ✓ Blade files → it detects multiline Blade content differences
+  ✓ Blade files → it detects whitespace changes in rendered or parsed source
   ✓ Blade files → it detects content changes
   ✓ Blade files → it keeps blade directives intact
   ✓ Blade files → it does not use the PHP tokenizer for blade files
-  ✓ JavaScript-like files → it strips line comments
-  ✓ JavaScript-like files → it strips block comments on their own lines
-  ✓ JavaScript-like files → it collapses whitespace
+  ✓ JavaScript-like files → it preserves JavaScript line comments in source fingerprints
+  ✓ JavaScript-like files → it preserves JavaScript block directives in fingerprints
+  ✓ JavaScript-like files → it detects whitespace changes in rendered or parsed source
   ✓ JavaScript-like files → it detects code changes
   ✓ JavaScript-like files → it does not strip inline trailing comments
-  ✓ JavaScript-like files → it applies the same rules to .ts files
-  ✓ JavaScript-like files → it applies the same rules to .tsx files
-  ✓ JavaScript-like files → it applies the same rules to .jsx files
-  ✓ JavaScript-like files → it applies the same rules to .vue files
-  ✓ JavaScript-like files → it applies the same rules to .svelte files
-  ✓ JavaScript-like files → it applies the same rules to .mjs, .cjs, and .mts files
+  ✓ JavaScript-like files → it keeps TypeScript directives rather than discarding them
+  ✓ JavaScript-like files → it keeps TSX source directives rather than discarding them
+  ✓ JavaScript-like files → it keeps JSX source directives rather than discarding them
+  ✓ JavaScript-like files → it keeps Vue source directives rather than discarding them
+  ✓ JavaScript-like files → it keeps Svelte source directives rather than discarding them
+  ✓ JavaScript-like files → it keeps module source directives rather than discarding them
   ✓ unknown extensions → it hashes the raw content for unknown extensions
   ✓ unknown extensions → it does not normalise whitespace for unknown extensions
   ✓ unknown extensions → it does not strip comments for unknown extensions
   ✓ unknown extensions → it hashes files with no extension as raw content
   ✓ output format → it returns a 32-character hex xxh128 hash
   ✓ output format → it returns a stable hash for empty content
+  ✓ observable source semantics → it does not conflate reflection-visible PHPDoc roles
+  ✓ observable source semantics → it does not conflate PHP line-number changes
+  ✓ observable source semantics → it does not conflate rendered Blade spacing
+  ✓ observable source semantics → it does not discard TypeScript check directives
+  ✓ observable source semantics → it does not discard Vite bundler annotations
+  ✓ observable source semantics → it retains observable edits through the last-run cache filter
 
    PASS  Tests\Unit\Plugins\Tia\FileState
   ✓ keysWithPrefix() → it lists keys matching the prefix
@@ -1959,6 +2027,7 @@
   ✓ activateLinkTracking() → it tracks inertia components without a coverage driver
   ✓ activateLinkTracking() → it tracks linked sources across consecutive tests
   ✓ activateLinkTracking() → it records nothing while inactive
+  ✓ it retains a true dependency even if only the final reported line executed
 
    PASS  Tests\Unit\Plugins\Tia\ResultKey
   ✓ it keys a result per dataset row rather than per method
@@ -2265,4 +2334,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1606 passed (3505 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1667 passed (4598 assertions)

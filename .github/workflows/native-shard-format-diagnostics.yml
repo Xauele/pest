@@ -1,0 +1,40 @@
+name: Native Shard Formatter Diagnostics
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Show Pint changes without pushing
+        run: |
+          vendor/bin/pint src/Factories/TestCaseFactory.php src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
+          git diff --exit-code -- src/Factories/TestCaseFactory.php src/Plugins/Shard.php src/Plugins/Shard/NativeShardInventory.php src/Plugins/Parallel/Paratest/WrapperRunner.php tests/Features/NativeShardDelegation.php tests/Fixtures/Suites/NativeShardWorkerDatasetTest.php
+
+      - name: Show success snapshot regeneration delta
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          REBUILD_SNAPSHOTS=1 php bin/pest --filter='visual snapshot of test suite on success' > /tmp/native-snapshot-rebuild.log 2>&1 || true
+          git diff --no-ext-diff -- tests/.snapshots/success.txt

@@ -354,13 +354,6 @@ final class Recorder
                 continue;
             }
 
-            $lineKeys = array_keys($lines);
-            $reportsUnexecutedLines = count($covered) < count($lines);
-
-            if ($reportsUnexecutedLines && count($covered) === 1 && $covered[0] === max($lineKeys)) {
-                continue;
-            }
-
             $out[] = $file;
         }
 

@@ -2,6 +2,7 @@
 
 use Pest\Exceptions\InvalidOption;
 use Pest\Plugins\Shard;
+use PHPUnit\Runner\Version;
 use SebastianBergmann\CliParser\Parser;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -180,7 +181,6 @@ describe('buildFilterArgument', function (): void {
             ->and('P\Tests\Unit\After::x')->toMatch('{'.$filter.'}i')
             ->and('P\Tests\Unit\After\AfterAll::y')->toMatch('{'.$filter.'}i');
     });
-
     it('keeps the filter whole when the parallel runner passes it as --filter=VALUE', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
@@ -307,20 +307,18 @@ describe('handleArguments', function (): void {
     });
 });
 
-describe('parseListTestsOutput', function (): void {
-    it('parses Tests\\ namespaced classes from --list-tests output', function (): void {
+describe('parseListTestIdsOutput', function (): void {
+    it('parses Tests\\ namespaced classes from --list-test-ids output', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('parseListTestsOutput');
+        $method = $reflection->getMethod('parseListTestIdsOutput');
 
         $listOutput = <<<'OUT'
- INFO  Available tests:
-
- - P\Tests\Features\After::__pest_evaluable_it_runs
- - P\Tests\Features\After::__pest_evaluable_it_runs_twice
- - P\Tests\Unit\Foo::test_bar
+P\Tests\Features\After::__pest_evaluable_it_runs
+P\Tests\Features\After::__pest_evaluable_it_runs_twice
+P\Tests\Unit\Foo::test_bar
 OUT;
 
         expect($method->invoke($shard, $listOutput))->toBe([
@@ -334,26 +332,68 @@ OUT;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('parseListTestsOutput');
+        $method = $reflection->getMethod('parseListTestIdsOutput');
 
         $listOutput = <<<'OUT'
- - P\Tests\Same::method_a
- - P\Tests\Same::method_b
- - P\Tests\Same::method_c
+P\Tests\Same::method_a
+P\Tests\Same::method_b
+P\Tests\Same::method_c
 OUT;
 
         expect($method->invoke($shard, $listOutput))->toBe(['Tests\\Same']);
     });
 
-    it('returns an empty list for output with no matching lines', function (): void {
+    it('rejects unknown test entries instead of silently certifying a partial inventory', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+
+        $method->invoke($shard, <<<'OUT'
+P\Tests\Example::test_first
+?invalid-test-entry
+OUT);
+    })->throws(InvalidOption::class, 'An unrecognised test ID');
+
+    it('rejects native and generated class names that collide after normalisation', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+
+        $method->invoke($shard, <<<'OUT'
+P\Acme\Example::test_one
+Acme\Example::test_two
+OUT);
+    })->throws(InvalidOption::class, 'cannot distinguish');
+
+    it('handles ANSI-styled test discovery without losing class names', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+
+        expect($method->invoke($shard, "\x1b[32mP\\Acme\\Example::test_one\x1b[0m\n"))->toBe(['Acme\\Example']);
+    });
+
+    it('parses Unicode PHP class identifiers from native and generated test entries', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+
+        $listOutput = <<<'OUT'
+P\Acme\ŚlimakTest::test_one
+Acme\ŻółwTest::test_two
+OUT;
+
+        expect($method->invoke($shard, $listOutput))->toBe([
+            'Acme\\ŚlimakTest',
+            'Acme\\ŻółwTest',
+        ]);
+    });
+
+    it('returns an empty list for a genuinely empty inventory', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('parseListTestsOutput');
+        $method = $reflection->getMethod('parseListTestIdsOutput');
 
         expect($method->invoke($shard, ''))->toBeEmpty()
-            ->and($method->invoke($shard, 'some random text'))->toBeEmpty();
+            ->and($method->invoke($shard, chr(13).chr(10)))->toBeEmpty();
     });
 
     it('parses non-Tests namespaced classes', function (): void {
@@ -361,12 +401,12 @@ OUT;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('parseListTestsOutput');
+        $method = $reflection->getMethod('parseListTestIdsOutput');
 
         $listOutput = <<<'OUT'
- - P\Acme\Sharding\OneTest::test_foo
- - P\Acme\Sharding\TwoTest::test_bar
- - App\Suite\BazTest::test_qux
+P\Acme\Sharding\OneTest::test_foo
+P\Acme\Sharding\TwoTest::test_bar
+App\Suite\BazTest::test_qux
 OUT;
 
         expect($method->invoke($shard, $listOutput))->toBe([
@@ -381,9 +421,9 @@ OUT;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('parseListTestsOutput');
+        $method = $reflection->getMethod('parseListTestIdsOutput');
 
-        expect($method->invoke($shard, ' - P\FooTest::test_bar'))->toBe(['FooTest']);
+        expect($method->invoke($shard, 'P\FooTest::test_bar'))->toBe(['FooTest']);
     });
 
     it('strips the P\\ Pest prefix but keeps the rest of the FQCN', function (): void {
@@ -391,11 +431,11 @@ OUT;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('parseListTestsOutput');
+        $method = $reflection->getMethod('parseListTestIdsOutput');
 
         $listOutput = <<<'OUT'
- - P\Acme\OneTest::a
- - Acme\TwoTest::b
+P\Acme\OneTest::a
+Acme\TwoTest::b
 OUT;
 
         expect($method->invoke($shard, $listOutput))->toBe([
@@ -404,32 +444,69 @@ OUT;
         ]);
     });
 
-    it('ignores junk lines that lack the " - …::" framing', function (): void {
-        $output = new BufferedOutput;
-        $shard = new Shard($output);
+    it('ignores framing blank lines around a native PHPUnit ID inventory', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+        $header = Version::getVersionString().PHP_EOL.PHP_EOL;
 
-        $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('parseListTestsOutput');
+        expect($method->invoke($shard, $header.PHP_EOL.'P\\Acme\\RealTest::method'.PHP_EOL.PHP_EOL))
+            ->toBe(['Acme\\RealTest']);
+    })->group('integration');
 
-        $listOutput = <<<'OUT'
- INFO  Available tests:
+    it('accepts the exact native PHPUnit CLI version header without treating it as a test', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+        $header = Version::getVersionString().PHP_EOL.PHP_EOL;
 
-There were errors:
-garbage ::: not a test
- - P\Acme\RealTest::method
-OUT;
+        expect($method->invoke($shard, $header.'P\\Acme\\RealTest::method'))->toBe(['Acme\\RealTest']);
+    })->group('integration');
 
-        expect($method->invoke($shard, $listOutput))->toBe(['Acme\\RealTest']);
-    });
+    it('rejects injected diagnostics mixed with native test IDs', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+
+        $method->invoke($shard, "P\\Acme\\RealTest::method\nWARN unexpected output");
+    })->throws(InvalidOption::class, 'An unrecognised test ID');
+
+    it('rejects duplicated method and dataset IDs', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+
+        $method->invoke($shard, "P\\Acme\\RealTest::method#first\nP\\Acme\\RealTest::method#first");
+    })->throws(InvalidOption::class, 'Duplicate test ID')->group('integration');
+
+    it('retains a canonical ID for each dataset row in native discovery', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('parseListTestIdsOutput');
+
+        expect($method->invoke($shard, "P\\Acme\\RealTest::method#first\nP\\Acme\\RealTest::method#second"))->toBe(['Acme\\RealTest']);
+
+        $property = new ReflectionProperty(Shard::class, 'discoveredTestIds');
+
+        expect($property->getValue($shard))->toBe([
+            'Acme\\RealTest' => [
+                'Acme\\RealTest::method#first' => true,
+                'Acme\\RealTest::method#second' => true,
+            ],
+        ]);
+    })->group('integration');
 });
 
-describe('buildListTestsCommand', function (): void {
-    it('builds the list-tests command with the forwarded --test-directory', function (): void {
+describe('buildListTestIdsCommand', function (): void {
+    it('keeps TIA disabled during machine-readable discovery even when requested on the parent', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $method = new ReflectionClass($shard)->getMethod('buildListTestIdsCommand');
+        $command = $method->invoke($shard, ['bin/pest', '--tia'], 'tests');
+
+        expect($command)->toContain('--tia', '--no-tia', '--list-test-ids');
+    })->group('integration');
+
+    it('builds the list-test-ids command with the forwarded --test-directory', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('buildListTestsCommand');
+        $method = $reflection->getMethod('buildListTestIdsCommand');
 
         $command = $method->invoke($shard, ['bin/pest', '--update-shards'], 'custom/suite');
 
@@ -438,16 +515,17 @@ describe('buildListTestsCommand', function (): void {
             'bin/pest',
             '--update-shards',
             '--test-directory=custom/suite',
-            '--list-tests',
+            '--no-tia',
+            '--list-test-ids',
         ]);
     });
 
-    it('strips --parallel and -p when building the list-tests command', function (): void {
+    it('strips --parallel and -p when building the list-test-ids command', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('buildListTestsCommand');
+        $method = $reflection->getMethod('buildListTestIdsCommand');
 
         $command = $method->invoke($shard, ['bin/pest', '--parallel', '--update-shards', '-p'], 'tests');
 
@@ -456,7 +534,8 @@ describe('buildListTestsCommand', function (): void {
             'bin/pest',
             '--update-shards',
             '--test-directory=tests',
-            '--list-tests',
+            '--no-tia',
+            '--list-test-ids',
         ]);
     });
 
@@ -465,19 +544,19 @@ describe('buildListTestsCommand', function (): void {
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('buildListTestsCommand');
+        $method = $reflection->getMethod('buildListTestIdsCommand');
 
         $command = $method->invoke($shard, ['bin/pest'], 'suites');
 
         expect($command)->toContain('--test-directory=suites');
     });
 
-    it('strips --processes=N when building the list-tests command', function (): void {
+    it('strips --processes=N when building the list-test-ids command', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('buildListTestsCommand');
+        $method = $reflection->getMethod('buildListTestIdsCommand');
 
         $command = $method->invoke($shard, ['bin/pest', '--parallel', '--processes=4', '--update-shards'], 'tests');
 
@@ -486,22 +565,30 @@ describe('buildListTestsCommand', function (): void {
             'bin/pest',
             '--update-shards',
             '--test-directory=tests',
-            '--list-tests',
+            '--no-tia',
+            '--list-test-ids',
         ]);
     });
 
-    it('strips --processes N (space-separated) when building the list-tests command', function (): void {
+    it('strips --processes N (space-separated) when building the list-test-ids command', function (): void {
         $output = new BufferedOutput;
         $shard = new Shard($output);
 
         $reflection = new ReflectionClass($shard);
-        $method = $reflection->getMethod('buildListTestsCommand');
+        $method = $reflection->getMethod('buildListTestIdsCommand');
 
         $command = $method->invoke($shard, ['bin/pest', '--parallel', '--processes', '4', '--update-shards'], 'tests');
 
         expect($command)->not->toContain('--processes')
             ->and($command)->toContain('--update-shards')
-            ->and($command)->toContain('--test-directory=tests');
+            ->and($command)->toBe([
+                PHP_BINARY,
+                'bin/pest',
+                '--update-shards',
+                '--test-directory=tests',
+                '--no-tia',
+                '--list-test-ids',
+            ]);
     });
 });
 
@@ -563,4 +650,42 @@ describe('addOutput', function (): void {
         expect($exitCode)->toBe(1)
             ->and($outputText)->not->toContain('Shard:');
     });
+});
+
+describe('native time-balanced shard allocation', function (): void {
+    it('matches the original deterministic allocation with ties, zero times and large shard counts', function (): void {
+        $shard = new Shard(new BufferedOutput);
+        $partition = new ReflectionClass($shard)->getMethod('partitionByTime');
+
+        $classes = [];
+        $timings = [];
+
+        for ($i = 0; $i < 1024; $i++) {
+            $class = 'Tests\\Benchmark\\Case'.str_pad((string) $i, 4, '0', STR_PAD_LEFT);
+            $classes[] = $class;
+            $timings[$class] = (($i * 17) % 37) / 10.0;
+        }
+
+        $items = array_map(static fn (string $test): array => [
+            'test' => $test,
+            'time' => $timings[$test],
+        ], $classes);
+
+        usort($items, static fn (array $a, array $b): int => $b['time'] <=> $a['time']);
+
+        foreach ([8, 64, 128, 256] as $total) {
+            $expected = array_fill(0, $total, []);
+            $binTimes = array_fill(0, $total, 0.0);
+
+            foreach ($items as $item) {
+                $index = array_search(min($binTimes), $binTimes, strict: true);
+                assert(is_int($index));
+
+                $expected[$index][] = $item['test'];
+                $binTimes[$index] += $item['time'];
+            }
+
+            expect($partition->invoke($shard, $classes, $timings, $total))->toBe($expected);
+        }
+    })->group('integration');
 });

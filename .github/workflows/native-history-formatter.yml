@@ -1,0 +1,43 @@
+name: Native Historical Formatter Diagnostic
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    if: startsWith(github.head_ref, 'experiment/native-history-scheduler-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Show exact Pint patch
+        shell: bash
+        run: |
+          vendor/bin/pint src/Plugins/Shard/NativeShardInventory.php
+          git diff -- src/Plugins/Shard/NativeShardInventory.php
+          git diff --exit-code -- src/Plugins/Shard/NativeShardInventory.php
+
+      - name: Show expected success snapshot changes
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          REBUILD_SNAPSHOTS=1 php bin/pest --filter='visual snapshot of test suite on success' > /tmp/native-history-snapshot.log 2>&1 || true
+          git diff --no-ext-diff -- tests/.snapshots/success.txt

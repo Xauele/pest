@@ -1,0 +1,420 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Pest\Plugins\Shard;
+
+use Pest\Contracts\HasPrintableTestCaseName;
+use Pest\TestSuite;
+use PHPUnit\Event\Code\Test;
+use PHPUnit\Event\Code\TestMethod;
+use ReflectionClass;
+use RuntimeException;
+use SplPriorityQueue;
+
+/**
+ * @internal Native PHPUnit discovery oracle for the experimental ParaTest fast path.
+ */
+final class NativeShardInventory
+{
+    /** @var array<string, array<string, true>>|null */
+    private static ?array $byFile = null;
+
+    /** @var array<string, array<string, true>>|null */
+    private static ?array $classesByFile = null;
+
+    /** @var array<string, mixed>|null */
+    private static ?array $historicalTimings = null;
+
+    /** @param array<string, mixed>|null $timings */
+    public static function setHistoricalTimings(?array $timings): void
+    {
+        self::$historicalTimings = $timings;
+    }
+
+    public static function hasHistoricalTimings(): bool
+    {
+        return self::$historicalTimings !== null;
+    }
+
+    /**
+     * @param  list<Test>  $tests
+     */
+    public static function capture(array $tests): void
+    {
+        $byFile = [];
+        $classesByFile = [];
+
+        /** @var array<string, non-empty-string> $classFiles */
+        $classFiles = [];
+
+        /** @var array<string, string> $classTimingKeys */
+        $classTimingKeys = [];
+
+        foreach ($tests as $test) {
+            if (! $test instanceof TestMethod) {
+                throw new RuntimeException(sprintf(
+                    'Native parallel shards currently support PHPUnit test methods only. Unsupported test type [%s]; run PHPT tests without ParaTest.',
+                    get_debug_type($test),
+                ));
+            }
+
+            $class = $test->className();
+
+            if (! isset($classFiles[$class])) {
+                $file = $test->file();
+
+                if (class_exists($class, false)) {
+                    $classFile = new ReflectionClass($class)->getFileName();
+
+                    if (is_string($classFile)) {
+                        $file = $classFile;
+                    }
+
+                    if (str_starts_with($class, 'P\\')
+                        && is_subclass_of($class, HasPrintableTestCaseName::class)
+                        && property_exists($class, '__filename')) {
+                        $original = $class::$__filename;
+
+                        if (is_string($original) && $original !== '') {
+                            $file = $original;
+                        }
+                    }
+                }
+
+                $classFiles[$class] = self::canonicalFile($file);
+                $isGenerated = str_starts_with($class, 'P\\')
+                    && is_subclass_of($class, HasPrintableTestCaseName::class)
+                    && property_exists($class, '__filename');
+
+                $classTimingKeys[$class] = $isGenerated ? substr($class, 2) : $class;
+            }
+
+            $file = $classFiles[$class];
+            $classesByFile[$file][$classTimingKeys[$class]] = true;
+            $id = $test->id();
+            if (isset($byFile[$file][$id])) {
+                throw new RuntimeException('Duplicate native PHPUnit test identity: '.$id);
+            }
+
+            $byFile[$file][$id] = true;
+        }
+
+        self::$byFile = $byFile;
+        self::$classesByFile = $classesByFile;
+    }
+
+    /**
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>
+     */
+    public static function filterDiscoveredFiles(array $available): array
+    {
+        if (self::$byFile === null) {
+            throw new RuntimeException('Native parallel sharding requires a PHPUnit test inventory. This suite may contain unsupported PHPT tests; retry without PEST_SHARD_NATIVE=1.');
+        }
+
+        $files = [];
+
+        foreach ($available as $path) {
+            $canonical = self::canonicalFile($path);
+
+            if (isset(self::$byFile[$canonical])) {
+                $files[$canonical] = $canonical;
+            }
+        }
+
+        foreach (array_keys(self::$byFile) as $discovered) {
+            if (! isset($files[$discovered])) {
+                throw new RuntimeException('A discovered native PHPUnit test file was not available to ParaTest: '.$discovered);
+            }
+        }
+
+        return array_values($files);
+    }
+
+    /**
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>
+     */
+    public static function selectFiles(array $available, int $index, int $total): array
+    {
+        if (self::$byFile === null) {
+            throw new RuntimeException('Native PHPUnit test inventory is missing.');
+        }
+
+        /** @var array<non-empty-string, int> $weights */
+        $weights = [];
+
+        foreach ($available as $filename) {
+            $canonical = self::canonicalFile($filename);
+
+            if (! isset(self::$byFile[$canonical])) {
+                throw new RuntimeException('Native shard cannot allocate an undiscovered file: '.$canonical);
+            }
+
+            $weights[$canonical] = count(self::$byFile[$canonical]);
+        }
+
+        return self::allocateByTestCount($weights, $index, $total);
+    }
+
+    /**
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>|null
+     */
+    public static function selectUsingTimings(array $available, int $index, int $total): ?array
+    {
+        if (self::$byFile === null || self::$classesByFile === null || self::$historicalTimings === null) {
+            throw new RuntimeException('Native historical sharding requires a discovered PHPUnit suite and shards.json timings.');
+        }
+
+        /** @var list<float> $known */
+        $known = [];
+
+        /** @var array<string, float> $validated */
+        $validated = [];
+        $classCount = 0;
+
+        foreach ($available as $filename) {
+            $file = self::canonicalFile($filename);
+
+            if (! isset(self::$byFile[$file], self::$classesByFile[$file])) {
+                throw new RuntimeException('The historical allocator received an undiscovered PHPUnit file: '.$file);
+            }
+
+            foreach (array_keys(self::$classesByFile[$file]) as $class) {
+                $classCount++;
+
+                if (! array_key_exists($class, self::$historicalTimings)) {
+                    continue;
+                }
+
+                $duration = self::$historicalTimings[$class];
+
+                if (! is_int($duration) && ! is_float($duration)) {
+                    throw new RuntimeException('Invalid shards.json duration for class: '.$class);
+                }
+
+                $duration = (float) $duration;
+
+                if (! is_finite($duration) || $duration < 0.0) {
+                    throw new RuntimeException('Non-finite or negative shards.json duration for class: '.$class);
+                }
+
+                $known[] = $duration;
+                $validated[$class] = $duration;
+            }
+        }
+
+        if ($known === [] || count($known) * 2 < $classCount) {
+            return null;
+        }
+
+        sort($known, SORT_NUMERIC);
+        $middle = intdiv(count($known), 2);
+        $median = count($known) % 2 === 0
+            ? ($known[$middle - 1] + $known[$middle]) / 2.0
+            : $known[$middle];
+
+        /** @var array<non-empty-string, float> $weights */
+        $weights = [];
+
+        foreach ($available as $filename) {
+            $file = self::canonicalFile($filename);
+            $weight = 0.0;
+
+            foreach (array_keys(self::$classesByFile[$file]) as $class) {
+                $duration = $validated[$class] ?? $median;
+                $weight += max(0.000001, $duration);
+            }
+
+            $weights[$file] = $weight;
+        }
+
+        return self::allocateByEstimatedDuration($weights, $index, $total);
+    }
+
+    /**
+     * @param  array<non-empty-string, float>  $weights
+     * @return list<non-empty-string>
+     */
+    public static function allocateByEstimatedDuration(array $weights, int $index, int $total): array
+    {
+        if ($total < 1 || $index < 1 || $index > $total) {
+            throw new RuntimeException('Invalid native historical shard index or total.');
+        }
+
+        foreach ($weights as $file => $weight) {
+            if (! is_finite($weight) || $weight <= 0.0) {
+                throw new RuntimeException('Native historical weight must be finite and strictly positive: '.$file);
+            }
+        }
+
+        $files = array_keys($weights);
+        usort($files, static fn (string $a, string $b): int => ($weights[$b] <=> $weights[$a]) ?: strcmp($a, $b));
+        $activeShards = min($total, count($files));
+
+        if ($index > $activeShards) {
+            return [];
+        }
+
+        /** @var SplPriorityQueue<array{float, int}, int> $heap */
+        $heap = new SplPriorityQueue;
+        $heap->setExtractFlags(SplPriorityQueue::EXTR_DATA);
+
+        /** @var array<int, float> $loads */
+        $loads = [];
+
+        for ($shard = 1; $shard <= $activeShards; $shard++) {
+            $loads[$shard] = 0.0;
+            $heap->insert($shard, [0.0, -$shard]);
+        }
+
+        $selected = [];
+
+        foreach ($files as $file) {
+            $shard = $heap->extract();
+
+            if (! is_int($shard)) {
+                throw new RuntimeException('Native historical heap returned an invalid index.');
+            }
+
+            if ($shard === $index) {
+                $selected[] = $file;
+            }
+
+            $loads[$shard] += $weights[$file];
+            $heap->insert($shard, [-$loads[$shard], -$shard]);
+        }
+
+        return $selected;
+    }
+
+    /**
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>
+     */
+    public static function allocateInDiscoveryOrder(array $available, int $index, int $total): array
+    {
+        if ($total < 1 || $index < 1 || $index > $total) {
+            throw new RuntimeException('Invalid native shard index or total.');
+        }
+
+        $selected = [];
+
+        foreach ($available as $position => $filename) {
+            if ($position % $total === $index - 1) {
+                $selected[] = $filename;
+            }
+        }
+
+        return $selected;
+    }
+
+    /**
+     * @param  array<non-empty-string, int>  $testCounts
+     * @return list<non-empty-string>
+     */
+    public static function allocateByTestCount(array $testCounts, int $index, int $total): array
+    {
+        if ($total < 1 || $index < 1 || $index > $total) {
+            throw new RuntimeException('Invalid native shard index or total.');
+        }
+
+        foreach ($testCounts as $count) {
+            if ($count < 1) {
+                throw new RuntimeException('Native shard weights require at least one discovered test per file.');
+            }
+        }
+
+        $files = array_keys($testCounts);
+        usort($files, static fn (string $left, string $right): int => ($testCounts[$right] <=> $testCounts[$left]) ?: strcmp($left, $right));
+
+        $activeShards = min($total, count($files));
+
+        if ($index > $activeShards) {
+            return [];
+        }
+
+        /** @var SplPriorityQueue<array{int, int}, int> $queue */
+        $queue = new SplPriorityQueue;
+        $queue->setExtractFlags(SplPriorityQueue::EXTR_DATA);
+
+        /** @var array<int, int> $loads */
+        $loads = [];
+
+        for ($shard = 1; $shard <= $activeShards; $shard++) {
+            $loads[$shard] = 0;
+            $queue->insert($shard, [0, -$shard]);
+        }
+
+        $selected = [];
+
+        foreach ($files as $filename) {
+            $shard = $queue->extract();
+
+            if (! is_int($shard)) {
+                throw new RuntimeException('Native shard heap returned an invalid index.');
+            }
+
+            if ($shard === $index) {
+                $selected[] = $filename;
+            }
+
+            $loads[$shard] += $testCounts[$filename];
+            $queue->insert($shard, [-$loads[$shard], -$shard]);
+        }
+
+        return $selected;
+    }
+
+    public static function release(): void
+    {
+        self::$byFile = null;
+        self::$classesByFile = null;
+        self::$historicalTimings = null;
+    }
+
+    /**
+     * @param  list<non-empty-string>  $selected
+     * @return array<string, true>
+     */
+    public static function selectedIds(array $selected): array
+    {
+        if (self::$byFile === null) {
+            throw new RuntimeException('Native shard discovery did not publish its PHPUnit test inventory.');
+        }
+
+        $ids = [];
+
+        foreach ($selected as $filename) {
+            $file = self::canonicalFile($filename);
+
+            if (! isset(self::$byFile[$file])) {
+                throw new RuntimeException('Native shard cannot attest an undiscovered file: '.$file);
+            }
+
+            foreach (self::$byFile[$file] as $id => $present) {
+                if (isset($ids[$id])) {
+                    throw new RuntimeException('Duplicate test identity across native shard files: '.$id);
+                }
+
+                $ids[$id] = $present;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param  non-empty-string  $path
+     * @return non-empty-string
+     */
+    private static function canonicalFile(string $path): string
+    {
+        return realpath($path)
+            ?: realpath(TestSuite::getInstance()->rootPath.DIRECTORY_SEPARATOR.$path)
+            ?: $path;
+    }
+}

@@ -1,0 +1,82 @@
+name: Native Shard Real Suite Parity
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Prepare full real suite including deterministic punctuation-only filenames
+        shell: bash
+        run: |
+          cp phpunit.xml phpunit.native-parity.xml
+          echo 'REAL_SUITE_CUSTOM_AFFIXES_INCLUDED=true'
+      - name: Compare full project unit and feature shard sets
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/native-real-suite
+          args=(bin/pest --configuration=phpunit.native-parity.xml --parallel --processes=2 --exclude-group=integration --exclude-group=tia --exclude-group=shard-state-self-test --colors=never)
+          for mode in legacy native; do
+            runner=(env -u PEST_SHARD_NATIVE -u PEST_NATIVE_SHARD_ALLOCATION)
+            if [[ "$mode" == native ]]; then runner=(env PEST_SHARD_NATIVE=1 PEST_NATIVE_SHARD_ALLOCATION=ordered); fi
+            for shard in 1 2 3 4; do
+              prefix="/tmp/native-real-suite/$mode-$shard"
+              if ! /usr/bin/time -f '%e,%M' -o "$prefix.time" "${runner[@]}" php "${args[@]}" "--shard=$shard/4" "--log-junit=$prefix.xml" > "$prefix.log" 2>&1; then
+                echo "::error::Real suite parity failed: mode=$mode shard=$shard"
+                tail -n 120 "$prefix.log"
+                exit 1
+              fi
+              echo "REAL_SUITE_SHARD mode=$mode shard=$shard $(cat "$prefix.time")"
+              grep -E 'Tests:|Shard:' "$prefix.log" | tail -n 3 || true
+            done
+          done
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from collections import Counter
+          from pathlib import Path
+
+          root = Path('/tmp/native-real-suite')
+          data = {}
+          for mode in ('legacy', 'native'):
+              combined = Counter()
+              for shard in (1, 2, 3, 4):
+                  junit = root / (mode + '-' + str(shard) + '.xml')
+                  if not junit.is_file():
+                      raise SystemExit('Missing JUnit report: ' + str(junit))
+                  cases = [(t.get('classname'), t.get('name')) for t in ET.parse(junit).iter('testcase')]
+                  combined.update(cases)
+              data[mode] = combined
+              print('REAL_SUITE_JUNIT_ROWS', mode, sum(combined.values()))
+          if data['legacy'] != data['native']:
+              print('REAL_SUITE_MISSING', list((data['legacy'] - data['native']).items())[:10])
+              print('REAL_SUITE_UNEXPECTED', list((data['native'] - data['legacy']).items())[:10])
+              raise SystemExit('Legacy/native JUnit multisets diverge')
+          if sum(data['native'].values()) < 1000:
+              raise SystemExit('Too few full-suite tests for representative validation')
+          print('REAL_SUITE_JUNIT_MULTISET_PARITY=PASS')
+          print('REAL_SUITE_LIMIT=JUnit names can collide; each native shard independently enforces raw PHPUnit event attestation')
+          PY

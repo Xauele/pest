@@ -1,0 +1,185 @@
+name: Native Historical Sharding Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  history:
+    if: startsWith(github.head_ref, 'experiment/native-history-scheduler-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Generate intentionally skewed real PHPUnit suite with a measured timing history
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          root = Path('tests/Fixtures/Suites/NativeHistorical')
+          root.mkdir(parents=True, exist_ok=True)
+          names = []
+          times = {}
+          for i in range(16):
+              classname = f'Historical{i:02d}Test'
+              names.append(classname)
+              slow = i % 4 == 0
+              micros = 250000 if slow else 0
+              contents = (
+                  '<?php\n'
+                  'declare(strict_types=1);\n'
+                  'namespace NativeHistorical;\n'
+                  'use PHPUnit\\Framework\\TestCase;\n'
+                  f'final class {classname} extends TestCase {{\n'
+                  '    public function test_calibrated_time(): void {\n'
+                  f'        usleep({micros});\n'
+                  '        self::assertTrue(true);\n'
+                  '    }\n'
+                  '}\n'
+              )
+              (root / f'{classname}.php').write_text(contents)
+              times[f'NativeHistorical\\{classname}'] = (0.25 if slow else 0.001)
+          xml = (
+              '<?xml version="1.0" encoding="UTF-8"?>\n'
+              '<phpunit bootstrap="../../../vendor/autoload.php" colors="false">\n'
+              '<testsuites><testsuite name="native-timing-evidence">\n'
+              + '\n'.join(f'<file>NativeHistorical/{name}.php</file>' for name in names)
+              + '\n</testsuite></testsuites></phpunit>\n'
+          )
+          Path('tests/Fixtures/Suites/NativeHistorical.xml').write_text(xml)
+          timings_path = Path('tests/.pest/shards.json')
+          if timings_path.exists():
+              raise SystemExit('The benchmark must not overwrite committed shard history')
+          timings_path.parent.mkdir(parents=True, exist_ok=True)
+          timings_path.write_text(json.dumps({'timings': times}, sort_keys=True))
+          print('HISTORY_FIXTURE_CLASSES=', len(times), 'HEAVY_CLASSES=', sum(t > 0.1 for t in times.values()))
+          PY
+      - name: Prove exact ID parity and concurrent wall-clock improvement
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import time
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          from statistics import median
+
+          root = Path('/tmp/pest-native-history')
+          root.mkdir(exist_ok=True)
+          base = ['php', 'bin/pest', '--configuration=tests/Fixtures/Suites/NativeHistorical.xml',
+                  '--parallel', '--processes=1', '--colors=never']
+          modes = ['legacy-history', 'native-ordered', 'native-history']
+          results = {}
+          for round_no in range(1, 4):
+              order = modes if round_no % 2 == 1 else list(reversed(modes))
+              for mode in order:
+                  env = os.environ.copy()
+                  env.pop('PEST_SHARD_NATIVE', None)
+                  env.pop('PEST_NATIVE_SHARD_ALLOCATION', None)
+                  if mode != 'legacy-history':
+                      env['PEST_SHARD_NATIVE'] = '1'
+                      env['PEST_NATIVE_SHARD_ALLOCATION'] = ('history' if mode == 'native-history' else 'ordered')
+                  running = []
+                  begin = time.perf_counter()
+                  for shard in (1, 2, 3, 4):
+                      prefix = root / f'{round_no}-{mode}-{shard}'
+                      log = open(f'{prefix}.log', 'w')
+                      command = base + [f'--shard={shard}/4', f'--log-junit={prefix}.xml']
+                      proc = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
+                      running.append((shard, proc, log, prefix))
+                  observed = set()
+                  for shard, proc, log, prefix in running:
+                      try:
+                          code = proc.wait(timeout=90)
+                      finally:
+                          log.close()
+                      if code:
+                          print(f'FAIL_HISTORY mode={mode} shard={shard} round={round_no} code={code}')
+                          print(Path(f'{prefix}.log').read_text(errors='replace')[-12000:])
+                          raise SystemExit(1)
+                      junit = Path(f'{prefix}.xml')
+                      if not junit.exists():
+                          raise SystemExit('Missing JUnit evidence: ' + str(junit))
+                      ids = {(c.get('classname'), c.get('name')) for c in ET.parse(junit).iter('testcase')}
+                      if len(ids) != 4 or observed.intersection(ids):
+                          raise SystemExit(f'Invalid per-shard JUnit inventory: {mode} {shard}: {ids}')
+                      observed.update(ids)
+                  wall = time.perf_counter() - begin
+                  results[(round_no, mode)] = (wall, observed)
+                  print(f'HISTORY_PARALLEL_WALL round={round_no} mode={mode} seconds={wall:.3f} ids={len(observed)}')
+          for round_no in (1, 2, 3):
+              sets = {mode: results[(round_no, mode)][1] for mode in modes}
+              if any(len(ids) != 16 for ids in sets.values()) or len({frozenset(ids) for ids in sets.values()}) != 1:
+                  raise SystemExit(f'ID parity failed on round {round_no}: {sets}')
+              print(f'HISTORY_EXACT_ID_PARITY round={round_no} PASS')
+          times = {mode: median(results[(r, mode)][0] for r in (1, 2, 3)) for mode in modes}
+          for mode, value in times.items():
+              print(f'HISTORY_MEDIAN_CONCURRENT_WALL mode={mode} seconds={value:.3f}')
+          print(f'HISTORY_SPEEDUP_NATIVE_VS_ORDERED={times["native-ordered"]/times["native-history"]:.2f}x')
+          print(f'HISTORY_SPEEDUP_NATIVE_VS_LEGACY={times["legacy-history"]/times["native-history"]:.2f}x')
+          if times['native-history'] >= times['native-ordered'] * 0.80:
+              raise SystemExit('Native historical scheduling did not materially reduce 4-shard concurrent wall time')
+          PY
+      - name: Unknown historical classes fall back instead of claiming an optimized schedule
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('tests/.pest/shards.json')
+          d = json.loads(p.read_text())
+          key = next(iter(d['timings']))
+          p.write_text(json.dumps({'timings': {key: d['timings'][key]}}))
+          PY
+          env PEST_SHARD_NATIVE=1 php bin/pest --configuration=tests/Fixtures/Suites/NativeHistorical.xml --parallel --processes=1 --shard=1/4 --colors=never > /tmp/native-history-cold.log 2>&1 || { cat /tmp/native-history-cold.log; exit 1; }
+          grep -q 'out of date' /tmp/native-history-cold.log || { cat /tmp/native-history-cold.log; exit 1; }
+          echo 'HISTORY_COLD_FALLBACK=PASS'
+      - name: Corrupted duration must never silently produce green
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          Path('tests/.pest/shards.json').write_text(json.dumps({
+              'timings': {'NativeHistorical\\Historical00Test': -1.0}
+          }))
+          PY
+          set +e
+          env PEST_SHARD_NATIVE=1 PEST_NATIVE_SHARD_ALLOCATION=history php bin/pest --configuration=tests/Fixtures/Suites/NativeHistorical.xml --parallel --processes=1 --shard=1/4 --colors=never > /tmp/native-history-corrupt.log 2>&1
+          result=$?
+          set -e
+          if [ "$result" -eq 0 ]; then echo '::error::Invalid duration accepted'; exit 1; fi
+          grep -q 'Non-finite or negative shards.json duration' /tmp/native-history-corrupt.log || { cat /tmp/native-history-corrupt.log; exit 1; }
+          echo 'HISTORY_INVALID_DURATION_REJECTED=PASS'

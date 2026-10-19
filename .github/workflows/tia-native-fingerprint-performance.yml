@@ -1,0 +1,142 @@
+name: Native TIA Fingerprint Engineering Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    if: startsWith(github.head_ref, 'fix/tia-observable-content-hash-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: External runtime and real Git based impact graph
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: php bin/pest tests/Features/Tia/ObservableChanges.php --colors=never
+
+  benchmark:
+    if: startsWith(github.head_ref, 'fix/tia-observable-content-hash-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Compare native streaming against prior PHP tokenizing path
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+        run: |
+          php <<'PHP'
+          <?php
+          declare(strict_types=1);
+
+          require 'vendor/autoload.php';
+
+          $file = tempnam(sys_get_temp_dir(), 'tia-native-benchmark-');
+          if ($file === false) {
+              throw new RuntimeException('Could not allocate benchmark file');
+          }
+
+          $source = "<?php\n\ndeclare(strict_types=1);\n";
+          for ($i = 0; $i < 7000; $i++) {
+              $source .= "/** @permission role{$i} */\nfunction action{$i}(int \$id): int { return \$id + {$i}; }\n";
+          }
+          file_put_contents($file, $source);
+
+          $legacy = static function () use ($file): string {
+              $raw = file_get_contents($file);
+              if (! is_string($raw)) {
+                  throw new RuntimeException('Legacy benchmark file disappeared');
+              }
+
+              $tokens = token_get_all($raw);
+              $normalised = '';
+
+              foreach ($tokens as $token) {
+                  if (is_array($token)) {
+                      if (in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                          continue;
+                      }
+                      $normalised .= $token[1];
+                  } else {
+                      $normalised .= $token;
+                  }
+              }
+
+              return hash('xxh128', $normalised);
+          };
+
+          $native = static fn (): string => \Pest\Plugins\Tia\ContentHash::of($file);
+
+          $measure = static function (callable $f): float {
+              $start = hrtime(true);
+              for ($i = 0; $i < 80; $i++) {
+                  $hash = $f();
+                  if (! is_string($hash) || strlen($hash) !== 32) {
+                      throw new RuntimeException('Invalid output during fingerprint benchmark');
+                  }
+              }
+
+              return (hrtime(true) - $start) / 1_000_000_000;
+          };
+
+          $results = ['legacy' => [], 'native' => []];
+          try {
+              $legacy();
+              $native();
+
+              for ($round = 1; $round <= 5; $round++) {
+                  $order = $round % 2 === 0 ? ['native', 'legacy'] : ['legacy', 'native'];
+
+                  foreach ($order as $mode) {
+                      $seconds = $measure($mode === 'native' ? $native : $legacy);
+                      $results[$mode][] = $seconds;
+                      printf("NATIVE_HASH_BENCH round=%d mode=%s seconds=%.6f\n", $round, $mode, $seconds);
+                  }
+              }
+
+              foreach ($results as &$times) {
+                  sort($times);
+              }
+              unset($times);
+              $oldMedian = $results['legacy'][2];
+              $newMedian = $results['native'][2];
+
+              printf("NATIVE_HASH_BENCH_SUMMARY input_bytes=%d legacy_median_s=%.6f native_median_s=%.6f speedup=%.2fx\n",
+                  strlen($source), $oldMedian, $newMedian, $oldMedian / $newMedian);
+              echo "NATIVE_HASH_BENCH_SCOPE=isolated fingerprint stage; not a full TIA or CI benchmark\n";
+
+              if ($newMedian >= $oldMedian) {
+                  throw new RuntimeException('Native streaming unexpectedly slower than legacy PHP tokenizing');
+              }
+          } finally {
+              @unlink($file);
+          }
+          PHP

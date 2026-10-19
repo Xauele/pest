@@ -1,0 +1,45 @@
+name: Native Shard Nested Process Attestation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  inherited_worker_context:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Nested subprocess must not impersonate shard worker
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          args=(bin/pest --configuration=tests/Fixtures/Suites/NativeShardNestedOuter.xml --parallel --processes=2 --colors=never)
+          env -u PEST_SHARD_NATIVE php "${args[@]}" > /tmp/nested-control.log 2>&1 || { cat /tmp/nested-control.log; exit 1; }
+          if ! env PEST_SHARD_NATIVE=1 php "${args[@]}" --shard=1/1 > /tmp/nested-native.log 2>&1; then
+            echo "::error::Nested Pest process inherited shard attestation scope and poisoned the worker evidence"
+            cat /tmp/nested-native.log
+            exit 1
+          fi
+          cat /tmp/nested-native.log
+          grep -q '1 passed' /tmp/nested-native.log
+          echo 'NESTED_PROCESS_EVIDENCE_ISOLATION=PASS'

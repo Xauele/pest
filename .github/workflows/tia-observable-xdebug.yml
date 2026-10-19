@@ -1,0 +1,46 @@
+name: TIA Observable Xdebug End-to-End
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docblock_replay:
+    if: startsWith(github.head_ref, 'fix/tia-observable-content-hash-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: xdebug
+          extensions: xdebug
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Verify Xdebug actually enabled before test evidence
+        shell: bash
+        env:
+          XDEBUG_MODE: coverage
+        run: |
+          set -euo pipefail
+          php -r 'if (!extension_loaded("xdebug") || !in_array("coverage", xdebug_info("mode"), true)) {fwrite(STDERR, "Xdebug coverage driver missing\n"); exit(1);} echo "XDEBUG_NATIVE_COVERAGE=PASS\n";'
+      - name: Assert docblock-only changes reexecute instead of replaying green
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: coverage
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          php bin/pest tests/Features/Tia/ObservableChanges.php --filter='Xdebug reexecutes affected tests' --colors=never > /tmp/tia-xdebug-proof.log 2>&1 || { cat /tmp/tia-xdebug-proof.log; exit 1; }
+          cat /tmp/tia-xdebug-proof.log
+          grep -Eq 'Tests:[[:space:]]+2 passed' /tmp/tia-xdebug-proof.log
+          echo 'TIA_PHPDOC_REPLAY_REJECTION=PASS'
