@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pest\Plugins\Shard;
 
+use Pest\Contracts\HasPrintableTestCaseName;
 use Pest\TestSuite;
 use PHPUnit\Event\Code\Test;
 use PHPUnit\Event\Code\TestMethod;
@@ -19,15 +20,36 @@ final class NativeShardInventory
     /** @var array<string, array<string, true>>|null */
     private static ?array $byFile = null;
 
+    /** @var array<string, array<string, true>>|null */
+    private static ?array $classesByFile = null;
+
+    /** @var array<string, mixed>|null */
+    private static ?array $historicalTimings = null;
+
+    /** @param array<string, mixed>|null $timings */
+    public static function setHistoricalTimings(?array $timings): void
+    {
+        self::$historicalTimings = $timings;
+    }
+
+    public static function hasHistoricalTimings(): bool
+    {
+        return self::$historicalTimings !== null;
+    }
+
     /**
      * @param  list<Test>  $tests
      */
     public static function capture(array $tests): void
     {
         $byFile = [];
+        $classesByFile = [];
 
         /** @var array<string, non-empty-string> $classFiles */
         $classFiles = [];
+
+        /** @var array<string, string> $classTimingKeys */
+        $classTimingKeys = [];
 
         foreach ($tests as $test) {
             if (! $test instanceof TestMethod) {
@@ -49,7 +71,9 @@ final class NativeShardInventory
                         $file = $classFile;
                     }
 
-                    if (str_starts_with($class, 'P\\') && property_exists($class, '__filename')) {
+                    if (str_starts_with($class, 'P\\')
+                        && is_subclass_of($class, HasPrintableTestCaseName::class)
+                        && property_exists($class, '__filename')) {
                         $original = $class::$__filename;
 
                         if (is_string($original) && $original !== '') {
@@ -59,9 +83,15 @@ final class NativeShardInventory
                 }
 
                 $classFiles[$class] = self::canonicalFile($file);
+                $isGenerated = str_starts_with($class, 'P\\')
+                    && is_subclass_of($class, HasPrintableTestCaseName::class)
+                    && property_exists($class, '__filename');
+
+                $classTimingKeys[$class] = $isGenerated ? substr($class, 2) : $class;
             }
 
             $file = $classFiles[$class];
+            $classesByFile[$file][$classTimingKeys[$class]] = true;
             $id = $test->id();
             if (isset($byFile[$file][$id])) {
                 throw new RuntimeException('Duplicate native PHPUnit test identity: '.$id);
@@ -71,6 +101,7 @@ final class NativeShardInventory
         }
 
         self::$byFile = $byFile;
+        self::$classesByFile = $classesByFile;
     }
 
     /**
@@ -126,6 +157,138 @@ final class NativeShardInventory
         }
 
         return self::allocateByTestCount($weights, $index, $total);
+    }
+
+    /**
+     * @param  list<non-empty-string>  $available
+     * @return list<non-empty-string>|null
+     */
+    public static function selectUsingTimings(array $available, int $index, int $total): ?array
+    {
+        if (self::$byFile === null || self::$classesByFile === null || self::$historicalTimings === null) {
+            throw new RuntimeException('Native historical sharding requires a discovered PHPUnit suite and shards.json timings.');
+        }
+
+        /** @var list<float> $known */
+        $known = [];
+
+        /** @var array<string, float> $validated */
+        $validated = [];
+        $classCount = 0;
+
+        foreach ($available as $filename) {
+            $file = self::canonicalFile($filename);
+
+            if (! isset(self::$byFile[$file], self::$classesByFile[$file])) {
+                throw new RuntimeException('The historical allocator received an undiscovered PHPUnit file: '.$file);
+            }
+
+            foreach (array_keys(self::$classesByFile[$file]) as $class) {
+                $classCount++;
+
+                if (! array_key_exists($class, self::$historicalTimings)) {
+                    continue;
+                }
+
+                $duration = self::$historicalTimings[$class];
+
+                if (! is_int($duration) && ! is_float($duration)) {
+                    throw new RuntimeException('Invalid shards.json duration for class: '.$class);
+                }
+
+                $duration = (float) $duration;
+
+                if (! is_finite($duration) || $duration < 0.0) {
+                    throw new RuntimeException('Non-finite or negative shards.json duration for class: '.$class);
+                }
+
+                $known[] = $duration;
+                $validated[$class] = $duration;
+            }
+        }
+
+        if ($known === [] || count($known) * 2 < $classCount) {
+            return null;
+        }
+
+        sort($known, SORT_NUMERIC);
+        $middle = intdiv(count($known), 2);
+        $median = count($known) % 2 === 0
+            ? ($known[$middle - 1] + $known[$middle]) / 2.0
+            : $known[$middle];
+
+        /** @var array<non-empty-string, float> $weights */
+        $weights = [];
+
+        foreach ($available as $filename) {
+            $file = self::canonicalFile($filename);
+            $weight = 0.0;
+
+            foreach (array_keys(self::$classesByFile[$file]) as $class) {
+                $duration = $validated[$class] ?? $median;
+                $weight += max(0.000001, $duration);
+            }
+
+            $weights[$file] = $weight;
+        }
+
+        return self::allocateByEstimatedDuration($weights, $index, $total);
+    }
+
+    /**
+     * @param  array<non-empty-string, float>  $weights
+     * @return list<non-empty-string>
+     */
+    public static function allocateByEstimatedDuration(array $weights, int $index, int $total): array
+    {
+        if ($total < 1 || $index < 1 || $index > $total) {
+            throw new RuntimeException('Invalid native historical shard index or total.');
+        }
+
+        foreach ($weights as $file => $weight) {
+            if (! is_finite($weight) || $weight <= 0.0) {
+                throw new RuntimeException('Native historical weight must be finite and strictly positive: '.$file);
+            }
+        }
+
+        $files = array_keys($weights);
+        usort($files, static fn (string $a, string $b): int => ($weights[$b] <=> $weights[$a]) ?: strcmp($a, $b));
+        $activeShards = min($total, count($files));
+
+        if ($index > $activeShards) {
+            return [];
+        }
+
+        /** @var SplPriorityQueue<array{float, int}, int> $heap */
+        $heap = new SplPriorityQueue;
+        $heap->setExtractFlags(SplPriorityQueue::EXTR_DATA);
+
+        /** @var array<int, float> $loads */
+        $loads = [];
+
+        for ($shard = 1; $shard <= $activeShards; $shard++) {
+            $loads[$shard] = 0.0;
+            $heap->insert($shard, [0.0, -$shard]);
+        }
+
+        $selected = [];
+
+        foreach ($files as $file) {
+            $shard = $heap->extract();
+
+            if (! is_int($shard)) {
+                throw new RuntimeException('Native historical heap returned an invalid index.');
+            }
+
+            if ($shard === $index) {
+                $selected[] = $file;
+            }
+
+            $loads[$shard] += $weights[$file];
+            $heap->insert($shard, [-$loads[$shard], -$shard]);
+        }
+
+        return $selected;
     }
 
     /**
@@ -209,6 +372,8 @@ final class NativeShardInventory
     public static function release(): void
     {
         self::$byFile = null;
+        self::$classesByFile = null;
+        self::$historicalTimings = null;
     }
 
     /**

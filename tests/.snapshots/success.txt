@@ -1908,6 +1908,9 @@
 
    PASS  Tests\Unit\Plugins\Shard\NativeShardInventory
   ✓ it preserves stable discovery-order allocation without assuming test counts predict duration
+  ✓ it uses measured durations to split expensive files rather than counting cases
+  ✓ it assigns every estimated-duration file once and is invariant to insertion order
+  ✓ it rejects corrupt duration weights without silently producing a green plan
   ✓ it allocates whole files by discovered test counts rather than file order
   ✓ it reproducibly assigns each file once across shard counts including empty shards
   ✓ it uses a lexical file-name tie break for equal test counts
@@ -2324,4 +2327,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1657 passed (4092 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1660 passed (4590 assertions)

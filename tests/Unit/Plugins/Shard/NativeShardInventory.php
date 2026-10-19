@@ -13,6 +13,49 @@ it('preserves stable discovery-order allocation without assuming test counts pre
         ->and(fn () => NativeShardInventory::allocateInDiscoveryOrder($files, 0, 2))->toThrow(RuntimeException::class);
 });
 
+it('uses measured durations to split expensive files rather than counting cases', function (): void {
+    $weights = [
+        '/suite/a.php' => 9.5,
+        '/suite/b.php' => 0.9,
+        '/suite/c.php' => 9.0,
+        '/suite/d.php' => 1.0,
+    ];
+
+    expect(NativeShardInventory::allocateByEstimatedDuration($weights, 1, 2))->toBe(['/suite/a.php', '/suite/b.php'])
+        ->and(NativeShardInventory::allocateByEstimatedDuration($weights, 2, 2))->toBe(['/suite/c.php', '/suite/d.php']);
+});
+
+it('assigns every estimated-duration file once and is invariant to insertion order', function (): void {
+    $weights = [];
+
+    for ($i = 0; $i < 75; $i++) {
+        $weights[sprintf('/suite/%03d.php', $i)] = 0.1 + (($i * 17) % 19) / 10.0;
+    }
+
+    foreach ([1, 2, 4, 16, 90] as $total) {
+        $seen = [];
+
+        for ($shard = 1; $shard <= $total; $shard++) {
+            $selected = NativeShardInventory::allocateByEstimatedDuration($weights, $shard, $total);
+
+            expect($selected)->toBe(NativeShardInventory::allocateByEstimatedDuration(array_reverse($weights, true), $shard, $total));
+
+            foreach ($selected as $file) {
+                expect(isset($seen[$file]))->toBeFalse();
+                $seen[$file] = true;
+            }
+        }
+
+        expect($seen)->toHaveSameSize($weights);
+    }
+});
+
+it('rejects corrupt duration weights without silently producing a green plan', function (): void {
+    expect(fn () => NativeShardInventory::allocateByEstimatedDuration(['/suite/x.php' => -1.0], 1, 2))->toThrow(RuntimeException::class)
+        ->and(fn () => NativeShardInventory::allocateByEstimatedDuration(['/suite/x.php' => INF], 1, 2))->toThrow(RuntimeException::class)
+        ->and(fn () => NativeShardInventory::allocateByEstimatedDuration(['/suite/x.php' => 0.0], 1, 2))->toThrow(RuntimeException::class);
+});
+
 it('allocates whole files by discovered test counts rather than file order', function (): void {
     $weights = [
         '/suite/c.php' => 1,
