@@ -111,8 +111,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             return $arguments;
         }
 
-        // @phpstan-ignore-next-line
-        $input = new ArgvInput($arguments);
+        $input = new ArgvInput(array_values($arguments));
 
         ['index' => $index, 'total' => $total] = self::getShard($input);
 
@@ -121,7 +120,6 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             $arguments,
         )));
 
-        /** @phpstan-ignore-next-line */
         $tests = $this->allTests($arguments);
 
         if ($tests === []) {
@@ -214,7 +212,6 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
         self::$updateShards = true;
 
-        /** @phpstan-ignore-next-line */
         self::$knownTests = $this->allTests($arguments);
         $this->discoveredTestIds = [];
 
