@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   history:
-    if: startsWith(github.head_ref, 'experiment/native-history-scheduler-')
+    if: startsWith(github.head_ref, 'experiment/native-history-scheduler-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   docblock_replay:
-    if: startsWith(github.head_ref, 'fix/tia-observable-content-hash-')
+    if: startsWith(github.head_ref, 'fix/tia-observable-content-hash-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
