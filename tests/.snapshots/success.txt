@@ -1965,6 +1965,7 @@
   ✓ activateLinkTracking() → it tracks inertia components without a coverage driver
   ✓ activateLinkTracking() → it tracks linked sources across consecutive tests
   ✓ activateLinkTracking() → it records nothing while inactive
+  ✓ it retains a true dependency even if only the final reported line executed
 
    PASS  Tests\Unit\Plugins\Tia\ResultKey
   ✓ it keys a result per dataset row rather than per method
@@ -2271,4 +2272,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1612 passed (3512 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1613 passed (3513 assertions)
