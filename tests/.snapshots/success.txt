@@ -1548,6 +1548,30 @@
   ✓ it can reference a specific class
   ✓ it can reference a specific class method
 
+   PASS  Tests\Features\ShardIntegrity
+  ✓ it does not execute the whole suite when a shard has no assigned classes with (false)
+  ✓ it does not execute the whole suite when a shard has no assigned classes with (true)
+  ✓ it accounts for every class across non-parallel shards, including PHPUnit classes
+  ✓ it accounts for all selected Pest classes in parallel shards
+  ✓ it cannot silently certify a lost PHPUnit class with parallel sharding
+  ✓ it dispatches every class in mixed Pest and PHPUnit suites across parallel shards
+  ✓ it accepts space-separated parallel worker counts during discovery
+  ✓ it attests intentionally skipped PHPUnit classes in serial and parallel mode with (false)
+  ✓ it attests intentionally skipped PHPUnit classes in serial and parallel mode with (true)
+  ✓ it dispatches Unicode PHPUnit classes in serial and parallel shards with (false)
+  ✓ it dispatches Unicode PHPUnit classes in serial and parallel shards with (true)
+  ✓ it does not run classes from a different parent namespace across serial and parallel shards with (false)
+  ✓ it does not run classes from a different parent namespace across serial and parallel shards with (true)
+  ✓ it rejects a missing dataset row in a green PHPUnit class, serial and parallel with (false)
+  ✓ it rejects a missing dataset row in a green PHPUnit class, serial and parallel with (true)
+  ✓ it attests every PHPUnit dataset row, not merely its class with (false)
+  ✓ it attests every PHPUnit dataset row, not merely its class with (true)
+  ✓ it attests every generated Pest dataset row, not merely its class with (false)
+  ✓ it attests every generated Pest dataset row, not merely its class with (true)
+  ✓ it rejects a missing Pest dataset row after discovery with (false)
+  ✓ it rejects a missing Pest dataset row after discovery with (true)
+  ✓ it keeps native PHPUnit test IDs byte-for-byte intact in CLI output
+
    WARN  Tests\Features\Skip
   ✓ it do not skips
   - it skips with truthy → 1
@@ -1850,21 +1874,39 @@
   ✓ ensureFilterLengthIsSafe → it accepts filter within custom limit
   ✓ handleArguments → it returns original arguments when shard option is not present
   ✓ handleArguments → it removes parallel arguments from test discovery
-  ✓ parseListTestsOutput → it parses Tests\ namespaced classes from --list-tests output
-  ✓ parseListTestsOutput → it deduplicates repeated class names from multiple test methods
-  ✓ parseListTestsOutput → it returns an empty list for output with no matching lines
-  ✓ parseListTestsOutput → it parses non-Tests namespaced classes
-  ✓ parseListTestsOutput → it parses unnamespaced top-level classes
-  ✓ parseListTestsOutput → it strips the P\ Pest prefix but keeps the rest of the FQCN
-  ✓ parseListTestsOutput → it ignores junk lines that lack the " - …::" framing
-  ✓ buildListTestsCommand → it builds the list-tests command with the forwarded --test-directory
-  ✓ buildListTestsCommand → it strips --parallel and -p when building the list-tests command
-  ✓ buildListTestsCommand → it forwards --test-directory even when input arguments include one
-  ✓ buildListTestsCommand → it strips --processes=N when building the list-tests command
-  ✓ buildListTestsCommand → it strips --processes N (space-separated) when building the list-tests command
+  ✓ parseListTestIdsOutput → it parses Tests\ namespaced classes from --list-test-ids output
+  ✓ parseListTestIdsOutput → it deduplicates repeated class names from multiple test methods
+  ✓ parseListTestIdsOutput → it rejects unknown test entries instead of silently certifying a partial inventory
+  ✓ parseListTestIdsOutput → it rejects native and generated class names that collide after normalisation
+  ✓ parseListTestIdsOutput → it handles ANSI-styled test discovery without losing class names
+  ✓ parseListTestIdsOutput → it parses Unicode PHP class identifiers from native and generated test entries
+  ✓ parseListTestIdsOutput → it returns an empty list for a genuinely empty inventory
+  ✓ parseListTestIdsOutput → it parses non-Tests namespaced classes
+  ✓ parseListTestIdsOutput → it parses unnamespaced top-level classes
+  ✓ parseListTestIdsOutput → it strips the P\ Pest prefix but keeps the rest of the FQCN
+  ✓ parseListTestIdsOutput → it ignores framing blank lines around a native PHPUnit ID inventory
+  ✓ parseListTestIdsOutput → it accepts the exact native PHPUnit CLI version header without treating it as a test
+  ✓ parseListTestIdsOutput → it rejects injected diagnostics mixed with native test IDs
+  ✓ parseListTestIdsOutput → it rejects duplicated method and dataset IDs
+  ✓ parseListTestIdsOutput → it retains a canonical ID for each dataset row in native discovery
+  ✓ buildListTestIdsCommand → it keeps TIA disabled during machine-readable discovery even when requested on the parent
+  ✓ buildListTestIdsCommand → it builds the list-test-ids command with the forwarded --test-directory
+  ✓ buildListTestIdsCommand → it strips --parallel and -p when building the list-test-ids command
+  ✓ buildListTestIdsCommand → it forwards --test-directory even when input arguments include one
+  ✓ buildListTestIdsCommand → it strips --processes=N when building the list-test-ids command
+  ✓ buildListTestIdsCommand → it strips --processes N (space-separated) when building the list-test-ids command
   ✓ addOutput → it displays shard information after test execution
   ✓ addOutput → it uses singular form for single test file
   ✓ addOutput → it returns original exit code when shard is not set
+  ✓ native time-balanced shard allocation → it matches the original deterministic allocation with ties, zero times and large shard counts
+
+   PASS  Tests\Unit\Plugins\Shard\RunIntegrity
+  ✓ it records only active runs and normalises generated Pest class names
+  ✓ it detects missing and unexpected test IDs without relying on assertion counts
+  ✓ it aggregates parallel worker evidence without duplicate classes
+  ✓ it fails closed on corrupted worker evidence
+  ✓ it fails a green run if one assigned test ID never completed
+  ✓ it rejects duplicated test execution evidence from independent workers
 
    PASS  Tests\Unit\Plugins\Tia\ContentHash
   ✓ of() → it returns false when file does not exist
@@ -2265,4 +2307,4 @@
   ✓ pass with dataset with ('my-datas-set-value')
   ✓ within describe → pass with dataset with ('my-datas-set-value')
 
-  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1606 passed (3505 assertions)
+  Tests:    2 deprecated, 4 warnings, 5 incomplete, 2 notices, 40 todos, 35 skipped, 1644 passed (3623 assertions)
