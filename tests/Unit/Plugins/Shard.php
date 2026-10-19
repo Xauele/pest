@@ -2,6 +2,7 @@
 
 use Pest\Exceptions\InvalidOption;
 use Pest\Plugins\Shard;
+use SebastianBergmann\CliParser\Parser;
 use PHPUnit\Runner\Version;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -179,6 +180,32 @@ describe('buildFilterArgument', function (): void {
         expect($filter)->toBe('Tests\\\\Unit\\\\(?:After::|After\\\\AfterAll::)')
             ->and('P\Tests\Unit\After::x')->toMatch('{'.$filter.'}i')
             ->and('P\Tests\Unit\After\AfterAll::y')->toMatch('{'.$filter.'}i');
+    });
+    it('keeps the filter whole when the parallel runner passes it as --filter=VALUE', function (): void {
+        $output = new BufferedOutput;
+        $shard = new Shard($output);
+
+        $reflection = new ReflectionClass($shard);
+        $method = $reflection->getMethod('buildFilterArgument');
+
+        $filter = $method->invoke($shard, ['Tests\\Unit\\AlphaTest', 'Tests\\Unit\\After', 'Tests\\Unit\\After\\AfterAll']);
+
+        [$options] = new Parser()->parse(['--filter='.$filter], '', ['filter=']);
+
+        expect($options)->toBe([['--filter', $filter]]);
+    });
+
+    it('matches a class-based test of the shard', function (): void {
+        $output = new BufferedOutput;
+        $shard = new Shard($output);
+
+        $reflection = new ReflectionClass($shard);
+        $method = $reflection->getMethod('buildFilterArgument');
+
+        $filter = $method->invoke($shard, ['Tests\\Unit\\AlphaTest']);
+
+        expect('Tests\Unit\AlphaTest::test_it_runs')->toMatch('{'.$filter.'}i')
+            ->and('Tests\Unit\AlphaTestTwo::test_it_runs')->not->toMatch('{'.$filter.'}i');
     });
 });
 
