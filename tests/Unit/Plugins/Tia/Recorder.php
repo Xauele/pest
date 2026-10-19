@@ -58,3 +58,13 @@ describe('activateLinkTracking()', function (): void {
         expect($recorder->perTestTables())->toBeEmpty();
     });
 });
+
+it('retains a true dependency even if only the final reported line executed', function (): void {
+    $recorder = new Recorder;
+    $method = new ReflectionMethod(Recorder::class, 'filesWithExecutedLines');
+
+    expect($method->invoke($recorder, [
+        '/project/app/FinalStatement.php' => [12 => -1, 30 => 1],
+        '/project/app/NeverExecuted.php' => [12 => -1, 30 => -1],
+    ]))->toBe(['/project/app/FinalStatement.php']);
+});
