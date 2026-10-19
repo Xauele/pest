@@ -3,7 +3,13 @@
 use PHPUnit\Framework\ExpectationFailedException;
 
 beforeEach(function (): void {
-    touch($this->tempFile = sys_get_temp_dir().'/fake.file');
+    $file = tempnam(sys_get_temp_dir(), 'pest-test-');
+
+    if ($file === false) {
+        throw new RuntimeException('Unable to create a unique temporary test file.');
+    }
+
+    $this->tempFile = $file;
 });
 
 afterEach(function (): void {

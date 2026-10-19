@@ -14,19 +14,38 @@ final class RunIntegrity
 {
     private static bool $active = false;
 
+    private static bool $preserveRawTestIds = false;
+
     /** @var array<string, true> */
     private static array $observed = [];
 
-    public static function activate(): void
+    /** @var array<string, true> */
+    private static array $finished = [];
+
+    /** @var array<string, true> */
+    private static array $skipped = [];
+
+    /** @var array<string, true> */
+    private static array $duplicates = [];
+
+    public static function activate(bool $preserveRawTestIds = false): void
     {
         self::$active = true;
+        self::$preserveRawTestIds = $preserveRawTestIds;
         self::$observed = [];
+        self::$finished = [];
+        self::$skipped = [];
+        self::$duplicates = [];
     }
 
     public static function deactivate(): void
     {
         self::$active = false;
+        self::$preserveRawTestIds = false;
         self::$observed = [];
+        self::$finished = [];
+        self::$skipped = [];
+        self::$duplicates = [];
     }
 
     public static function observe(string $testId): void
@@ -35,11 +54,56 @@ final class RunIntegrity
             return;
         }
 
-        $normalised = str_starts_with($testId, 'P\\') ? substr($testId, 2) : $testId;
+        $normalised = self::normaliseTestId($testId);
 
         if ($normalised !== '') {
             self::$observed[$normalised] = true;
         }
+    }
+
+    public static function observeFinished(string $testId): void
+    {
+        self::observeEvent($testId, self::$finished);
+    }
+
+    public static function observeSkipped(string $testId): void
+    {
+        self::observeEvent($testId, self::$skipped);
+    }
+
+    /** @param array<string, true> $seen */
+    private static function observeEvent(string $testId, array &$seen): void
+    {
+        if (! self::$active) {
+            return;
+        }
+
+        $id = self::normaliseTestId($testId);
+
+        if ($id === '') {
+            return;
+        }
+
+        if (isset($seen[$id])) {
+            self::$duplicates[$id] = true;
+        }
+
+        $seen[$id] = true;
+        self::$observed[$id] = true;
+    }
+
+    private static function normaliseTestId(string $testId): string
+    {
+        if (self::$preserveRawTestIds) {
+            return $testId;
+        }
+
+        return str_starts_with($testId, 'P\\') ? substr($testId, 2) : $testId;
+    }
+
+    public static function hasDuplicateObservations(): bool
+    {
+        return self::$duplicates !== [];
     }
 
     /** @return array<string, true> */
@@ -73,7 +137,13 @@ final class RunIntegrity
         $temporary = $path.'.'.bin2hex(random_bytes(8)).'.tmp';
 
         try {
-            $contents = json_encode(array_keys(self::$observed), JSON_THROW_ON_ERROR);
+            $ids = array_keys(self::$observed);
+
+            foreach (array_keys(self::$duplicates) as $duplicate) {
+                $ids[] = $duplicate;
+            }
+
+            $contents = json_encode($ids, JSON_THROW_ON_ERROR);
 
             if (file_put_contents($temporary, $contents, LOCK_EX) !== strlen($contents) || ! rename($temporary, $path)) {
                 throw new RuntimeException('Unable to publish shard integrity evidence.');

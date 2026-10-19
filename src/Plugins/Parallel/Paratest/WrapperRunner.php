@@ -14,6 +14,9 @@ use ParaTest\RunnerInterface;
 use ParaTest\WrapperRunner\MissingResultsException;
 use ParaTest\WrapperRunner\SuiteLoader;
 use ParaTest\WrapperRunner\WrapperWorker;
+use Pest\Plugins\Parallel;
+use Pest\Plugins\Shard;
+use Pest\Plugins\Shard\NativeShardInventory;
 use Pest\Plugins\Tia;
 use Pest\Result;
 use Pest\TestSuite;
@@ -658,7 +661,40 @@ final class WrapperRunner implements RunnerInterface
             }
         }
 
-        return array_keys($files);
+        $native = Parallel::getGlobal('NATIVE_SHARD_FILE_ALLOCATION');
+        $allFiles = array_keys($files);
+
+        if (is_string($native)) {
+            $allFiles = NativeShardInventory::filterDiscoveredFiles($allFiles);
+        }
+
+        if (getenv('PEST_NATIVE_SHARD_DEBUG') === '1') {
+            $this->output->writeln('DEBUG_NATIVE_DISCOVERY: '.json_encode($allFiles, JSON_THROW_ON_ERROR));
+        }
+
+        if (is_string($native) && preg_match('/^(\\d+)\\/(\\d+)$/', $native, $matches) === 1) {
+            $index = (int) $matches[1];
+            $total = (int) $matches[2];
+
+            if ($index < 1 || $total < 1 || $index > $total) {
+                throw new RuntimeException('Invalid native ParaTest shard configuration.');
+            }
+
+            $allocation = getenv('PEST_NATIVE_SHARD_ALLOCATION') ?: 'ordered';
+
+            $selected = match ($allocation) {
+                'ordered' => NativeShardInventory::allocateInDiscoveryOrder($allFiles, $index, $total),
+                'test-count' => NativeShardInventory::selectFiles($allFiles, $index, $total),
+                default => throw new RuntimeException('Unknown native shard allocation strategy: '.$allocation),
+            };
+            $expected = NativeShardInventory::selectedIds($selected);
+            NativeShardInventory::release();
+            Shard::recordNativeFileAllocation($index, $total, count($selected), count($allFiles), $expected);
+
+            return $selected;
+        }
+
+        return $allFiles;
     }
 
     private function shouldIncludeBootstrappedTestFile(string $filename): bool

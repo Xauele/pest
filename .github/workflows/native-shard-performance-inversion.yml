@@ -1,0 +1,96 @@
+name: Native Shard Performance Inversion
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          coverage: none
+          extensions: sockets
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+        run: composer update --prefer-stable --no-interaction --no-progress
+      - name: Explore pathological weight vs duration distribution
+        shell: bash
+        env:
+          COMPOSER_ROOT_VERSION: 5.x-dev
+          XDEBUG_MODE: off
+          PAO_DISABLE: '1'
+          COLLISION_PRINTER: DefaultPrinter
+          COLLISION_IGNORE_DURATION: 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/skew
+          args=(bin/pest --configuration=tests/Fixtures/Suites/NativeShardSkew.xml --parallel --processes=2 --colors=never)
+          echo 'round,mode,shard,seconds' > /tmp/skew/times.csv
+          run_one() {
+            local round="$1" mode="$2" shard="$3"
+            local env_args=(env -u PEST_SHARD_NATIVE -u PEST_NATIVE_SHARD_ALLOCATION)
+            if [[ "$mode" == native ]]; then env_args=(env PEST_SHARD_NATIVE=1 PEST_NATIVE_SHARD_ALLOCATION=ordered); fi
+            if [[ "$mode" == count ]]; then env_args=(env PEST_SHARD_NATIVE=1 PEST_NATIVE_SHARD_ALLOCATION=test-count); fi
+            local prefix="/tmp/skew/$round-$mode-$shard"
+            if ! /usr/bin/time -f '%e' -o "$prefix.time" "${env_args[@]}" php "${args[@]}" "--shard=$shard/2" "--log-junit=$prefix.xml" > "$prefix.log" 2>&1; then
+              echo "::error::Skew fixture failed, mode=$mode shard=$shard"
+              cat "$prefix.log"
+              exit 1
+            fi
+            echo "$round,$mode,$shard,$(cat "$prefix.time")" >> /tmp/skew/times.csv
+          }
+          for mode in legacy native count; do run_one warmup "$mode" 1; done
+          for round in 1 2 3; do
+            first=legacy; second=native; third=count
+            if (( round % 2 == 0 )); then first=count; second=native; third=legacy; fi
+            for mode in "$first" "$second" "$third"; do
+              for shard in 1 2; do run_one "$round" "$mode" "$shard"; done
+            done
+          done
+          python3 - <<'PY'
+          import csv
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          from statistics import median
+          from collections import defaultdict
+          root = Path('/tmp/skew')
+          rows = list(csv.DictReader((root / 'times.csv').open()))
+          wall = defaultdict(dict)
+          for row in rows:
+              if row['round'] == 'warmup':
+                  continue
+              mode, run, shard = row['mode'], int(row['round']), int(row['shard'])
+              junit = root / (str(run) + '-' + mode + '-' + str(shard) + '.xml')
+              tests = {(case.get('classname'), case.get('name')) for case in ET.parse(junit).iter('testcase')}
+              wall[(mode, run)][shard] = (float(row['seconds']), tests)
+          for run in (1, 2, 3):
+              observed = {}
+              for mode in ('legacy', 'native', 'count'):
+                  seen = set()
+                  for _, ids in wall[(mode, run)].values():
+                      if seen.intersection(ids):
+                          raise SystemExit('Duplicate JUnit test identity across shards')
+                      seen.update(ids)
+                  observed[mode] = seen
+              if observed['legacy'] != observed['native'] or observed['legacy'] != observed['count'] or len(observed['native']) != 103:
+                  raise SystemExit('Unequal shard identity sets; performance results invalid')
+              print('SKEW_ID_PARITY=PASS round=', run, 'ids=', len(observed['native']))
+          medians = {}
+          for mode in ('legacy', 'native', 'count'):
+              peaks = [max(wall[(mode, r)][s][0] for s in (1, 2)) for r in (1, 2, 3)]
+              medians[mode] = median(peaks)
+              print('SKEW_MAX_SHARD_MEDIAN', mode, str(medians[mode]) + 's')
+          print('SKEW_NATIVE_TO_LEGACY_RATIO=', round(medians['native'] / medians['legacy'], 3))
+          print('SKEW_COUNT_TO_LEGACY_RATIO=', round(medians['count'] / medians['legacy'], 3))
+          print('SKEW_NOTE=Counting test rows is not equivalent to predicting elapsed time; diagnostic experiment only')
+          PY

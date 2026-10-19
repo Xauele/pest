@@ -19,6 +19,8 @@ pest()->in('Visual')->group('integration');
 
 pest()->in('Features/Tia')->group('integration', 'tia');
 
+pest()->in('Unit/Plugins/Shard.php')->group('shard-state-self-test');
+
 $_SERVER['globalHook'] = (object) ['calls' => (object) ['beforeAll' => 0, 'afterAll' => 0]];
 
 pest()

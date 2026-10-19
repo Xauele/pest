@@ -9,6 +9,8 @@ use Pest\Contracts\Plugins\HandlesArguments;
 use Pest\Contracts\Plugins\Terminable;
 use Pest\Exceptions\InvalidOption;
 use Pest\Plugins\Shard\RunIntegrity;
+use Pest\Subscribers\EnsureNativeShardInventoryFiltered;
+use Pest\Subscribers\EnsureNativeShardInventoryLoaded;
 use Pest\Subscribers\EnsureShardTestIsFinished;
 use Pest\Subscribers\EnsureShardTestIsSkipped;
 use Pest\Subscribers\EnsureShardTimingFinished;
@@ -85,12 +87,12 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
      */
     public function handleArguments(array $arguments): array
     {
-        if (Parallel::isWorker()) {
+        if ($this->isDirectParallelWorker()) {
             $runId = Parallel::getGlobal(self::INTEGRITY_GLOBAL);
 
             if (is_string($runId)) {
                 self::$integrityRunId = $runId;
-                $this->registerIntegritySubscribers();
+                $this->registerIntegritySubscribers(is_string(Parallel::getGlobal('NATIVE_SHARD_FILE_ALLOCATION')));
             }
         }
 
@@ -119,6 +121,17 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
             "$index/$total",
             $arguments,
         )));
+
+        if (getenv('PEST_SHARD_NATIVE') === '1'
+            && ! Parallel::isWorker()
+            && (in_array('--parallel', $arguments, true) || in_array('-p', $arguments, true))
+            && $this->loadShardsFile() === null) {
+            Event\Facade::instance()->registerSubscriber(new EnsureNativeShardInventoryLoaded);
+            Event\Facade::instance()->registerSubscriber(new EnsureNativeShardInventoryFiltered);
+            Parallel::setGlobal('NATIVE_SHARD_FILE_ALLOCATION', "$index/$total");
+
+            return $arguments;
+        }
 
         $tests = $this->allTests($arguments);
 
@@ -416,6 +429,24 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         }
     }
 
+    /**
+     * @internal This is an opt-in native ParaTest experiment only.
+     */
+    /** @param array<string, true> $expected */
+    public static function recordNativeFileAllocation(int $index, int $total, int $assigned, int $discovered, array $expected): void
+    {
+        self::$expectedTestIds = $expected;
+        self::$integrityRunId = bin2hex(random_bytes(16));
+        Parallel::setGlobal(self::INTEGRITY_GLOBAL, self::$integrityRunId);
+
+        self::$shard = [
+            'index' => $index,
+            'total' => $total,
+            'testsRan' => $assigned,
+            'testsCount' => $discovered,
+        ];
+    }
+
     public function addOutput(int $exitCode): int
     {
         $exitCode = $this->verifyShardIntegrity($exitCode);
@@ -465,7 +496,7 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
 
     public function terminate(): void
     {
-        if (Parallel::isWorker() && self::$integrityRunId !== null) {
+        if ($this->isDirectParallelWorker() && self::$integrityRunId !== null) {
             RunIntegrity::writeWorkerEvidence(self::$integrityRunId);
         }
 
@@ -492,9 +523,27 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         $this->writeTimings($timings);
     }
 
-    private function registerIntegritySubscribers(): void
+    private function isDirectParallelWorker(): bool
     {
-        RunIntegrity::activate();
+        if (! Parallel::isWorker()) {
+            return false;
+        }
+
+        $script = $_SERVER['SCRIPT_FILENAME'] ?? null;
+
+        if (! is_string($script)) {
+            return false;
+        }
+
+        $scriptPath = realpath($script);
+        $workerPath = realpath(dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'bin'.DIRECTORY_SEPARATOR.'worker.php');
+
+        return $scriptPath !== false && $workerPath !== false && $scriptPath === $workerPath;
+    }
+
+    private function registerIntegritySubscribers(bool $preserveRawTestIds = false): void
+    {
+        RunIntegrity::activate($preserveRawTestIds);
 
         Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsFinished);
         Event\Facade::instance()->registerSubscriber(new EnsureShardTestIsSkipped);
@@ -507,6 +556,12 @@ final class Shard implements AddsOutput, HandlesArguments, Terminable
         }
 
         $observed = RunIntegrity::observed();
+
+        if (RunIntegrity::hasDuplicateObservations() && $exitCode === 0) {
+            $this->output->writeln('  <fg=red;options=bold>ERROR</> Shard integrity failed: duplicate test completion.');
+
+            return 1;
+        }
 
         if (self::$integrityRunId !== null) {
             $workers = RunIntegrity::collectWorkerEvidence(self::$integrityRunId);
