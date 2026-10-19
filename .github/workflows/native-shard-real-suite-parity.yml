@@ -23,19 +23,11 @@ jobs:
         env:
           COMPOSER_ROOT_VERSION: 5.x-dev
         run: composer update --prefer-stable --no-interaction --no-progress
-      - name: Exclude inherently randomized class identities in cross-process comparison
+      - name: Prepare full real suite including deterministic punctuation-only filenames
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          original = Path('phpunit.xml').read_text()
-          marker = '      <exclude>./tests/Fixtures/Tia</exclude>'
-          if original.count(marker) != 1:
-              raise SystemExit('Unexpected phpunit.xml baseline; cannot create parity fixture')
-          result = original.replace(marker, marker + '\n      <exclude>./tests/PHPUnit/CustomAffixes</exclude>')
-          Path('phpunit.native-parity.xml').write_text(result)
-          print('REAL_SUITE_EXCLUSION=tests/PHPUnit/CustomAffixes (random class names generated independently per process)')
-          PY
+          cp phpunit.xml phpunit.native-parity.xml
+          echo 'REAL_SUITE_CUSTOM_AFFIXES_INCLUDED=true'
       - name: Compare full project unit and feature shard sets
         shell: bash
         env:

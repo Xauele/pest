@@ -123,7 +123,7 @@ final class TestCaseFactory
         $baseClass = sprintf('\%s', $this->class);
 
         if (trim($className) === '') {
-            $className = 'InvalidTestName'.Str::random();
+            $className = 'InvalidTestName'.substr(hash('sha256', $realpath !== '' ? $realpath : $this->filename), 0, 24);
         } elseif (! Str::isValidClassName($className)) {
             throw InvalidTestClassName::fromClassName($this->filename, $className);
         }
