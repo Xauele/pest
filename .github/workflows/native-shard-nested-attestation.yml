@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   inherited_worker_context:
-    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-')
+    if: startsWith(github.head_ref, 'experiment/native-paratest-suite-dispatch-') || startsWith(github.head_ref, 'candidate/pest-5-safe-fast-')
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
