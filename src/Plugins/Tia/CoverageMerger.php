@@ -7,6 +7,7 @@ namespace Pest\Plugins\Tia;
 use Pest\Plugins\Tia;
 use Pest\Plugins\Tia\Contracts\State;
 use Pest\Support\Container;
+use RuntimeException;
 use SebastianBergmann\CodeCoverage\CodeCoverage;
 use SebastianBergmann\CodeCoverage\Driver\Selector;
 use SebastianBergmann\CodeCoverage\Filter;
@@ -115,10 +116,13 @@ final class CoverageMerger
 
     private static function stripCurrentTestsFromCached(CodeCoverage $cached, CodeCoverage $current): void
     {
-        $currentIds = self::collectTestIds($current);
+        $currentIds = array_fill_keys(self::collectTestIds($current), true);
+        $catalog = Container::getInstance()->get(CoverageTestCatalog::class);
+        $tia = Container::getInstance()->get(Tia::class);
+        assert($catalog instanceof CoverageTestCatalog && $tia instanceof Tia);
 
-        if ($currentIds === []) {
-            return;
+        if (! $catalog->hasLoadedSuite()) {
+            throw new RuntimeException('TIA cannot verify cached coverage: PHPUnit test discovery is unavailable.');
         }
 
         $cachedData = $cached->getData();
@@ -126,7 +130,9 @@ final class CoverageMerger
         $staleIndexes = [];
 
         foreach ($cachedData->testIds() as $index => $id) {
-            if (in_array($id, $currentIds, true)) {
+            $file = $catalog->fileFor($id);
+
+            if (isset($currentIds[$id]) || $file === null || ! $tia->isTestReplayedForCoverage($file, $id)) {
                 $staleIndexes[$index] = true;
             }
         }
